@@ -1,0 +1,2071 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  Taiwan entdecken – Offline-App für Austauschschüler
+  ============================================================
+  Eine einzelne HTML-Datei, kein Server, keine externen Bibliotheken.
+
+  HINWEIS ZU KAMERA UND MIKROFON:
+  Kamera- und Mikrofonzugriff (getUserMedia / MediaRecorder) funktioniert
+  in vielen Browsern nur über HTTPS oder über localhost. Beim Öffnen der
+  Datei direkt per file:// kann der Zugriff blockiert sein. Die App bleibt
+  dann trotzdem vollständig nutzbar: Fotos können über die Galerie
+  gewählt werden, Audio ist optional.
+
+  SPEICHERUNG:
+  - Textdaten, Favoriten, Einstellungen -> localStorage
+  - Fotos und Audioaufnahmen            -> IndexedDB (als Blob)
+  Es werden keine Daten ins Internet gesendet.
+  ============================================================
+-->
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#16284a">
+<title>Taiwan entdecken</title>
+
+<style>
+/* =========================================================
+   1. DESIGN-VARIABLEN (Creme, Dunkelblau, Jadegrün, Koralle)
+   ========================================================= */
+:root {
+  --bg: #fbf5e6;            /* Creme */
+  --bg-card: #ffffff;
+  --bg-soft: #f3ead2;
+  --text: #16284a;          /* Dunkelblau */
+  --text-soft: #4a5876;
+  --primary: #16284a;       /* Dunkelblau */
+  --primary-text: #ffffff;
+  --jade: #0f7a62;          /* Jadegrün */
+  --jade-soft: #d6efe7;
+  --coral: #e8553d;         /* Koralle (Akzent) */
+  --coral-soft: #fde1db;
+  --border: #d9cfb4;
+  --danger: #b3261e;
+  --shadow: 0 2px 8px rgba(22, 40, 74, .12);
+  --radius: 16px;
+  --font: system-ui, -apple-system, "Segoe UI", Roboto, "Noto Sans TC",
+          "PingFang TC", "Microsoft JhengHei", sans-serif;
+}
+/* Dark Mode wird über data-theme="dark" am <html>-Element gesteuert */
+:root[data-theme="dark"] {
+  --bg: #0c1730;
+  --bg-card: #16284a;
+  --bg-soft: #1e3560;
+  --text: #fbf5e6;
+  --text-soft: #c5cde0;
+  --primary: #3fc4a2;
+  --primary-text: #08201a;
+  --jade: #3fc4a2;
+  --jade-soft: #123c37;
+  --coral: #ff7d66;
+  --coral-soft: #4a2420;
+  --border: #35507f;
+  --danger: #ff8a80;
+  --shadow: 0 2px 8px rgba(0, 0, 0, .5);
+}
+
+/* =========================================================
+   2. BASIS
+   ========================================================= */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  font-size: 18px;               /* große Schrift */
+  line-height: 1.5;
+  background: var(--bg);
+  color: var(--text);
+  padding-bottom: 90px;          /* Platz für untere Navigation */
+}
+h1, h2, h3 { line-height: 1.25; margin: 0 0 .5em; }
+h1 { font-size: 1.5rem; }
+h2 { font-size: 1.35rem; }
+h3 { font-size: 1.15rem; }
+p { margin: 0 0 .8em; }
+.zh { font-family: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", sans-serif; }
+.hidden { display: none !important; }
+.sr-only {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+
+/* =========================================================
+   3. KOPFBEREICH, SUCHE, FILTER (immer gut erreichbar)
+   ========================================================= */
+.app-header {
+  position: sticky; top: 0; z-index: 50;
+  background: var(--primary);
+  color: var(--primary-text);
+  padding: 10px 14px;
+  padding-top: calc(10px + env(safe-area-inset-top));
+  box-shadow: var(--shadow);
+}
+:root[data-theme="dark"] .app-header { background: #0a1226; color: #fbf5e6; }
+.header-row { display: flex; align-items: center; gap: 10px; }
+.header-row h1 { margin: 0; flex: 1; font-size: 1.3rem; color: inherit; }
+.search-row { display: flex; gap: 8px; margin-top: 8px; }
+.search-row input[type="search"] { flex: 1; min-width: 0; }
+.filter-panel {
+  margin-top: 8px; padding: 10px;
+  background: var(--bg-card); color: var(--text);
+  border-radius: var(--radius);
+  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;
+}
+.filter-panel label { font-size: .85rem; font-weight: 600; display: block; }
+.filter-panel .full { grid-column: 1 / -1; }
+
+/* =========================================================
+   4. FORMULARELEMENTE UND BUTTONS
+   ========================================================= */
+input, select, textarea {
+  width: 100%;
+  font: inherit;
+  padding: 12px;
+  min-height: 48px;
+  border: 2px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  color: var(--text);
+}
+textarea { min-height: 96px; resize: vertical; }
+label { display: block; font-weight: 600; margin: 12px 0 4px; }
+.checkbox-label { display: flex; align-items: center; gap: 10px; font-weight: 600; }
+.checkbox-label input { width: 28px; height: 28px; min-height: 28px; }
+
+.btn {
+  font: inherit; font-weight: 700;
+  min-height: 52px; padding: 10px 18px;
+  border: 2px solid transparent;
+  border-radius: 14px;
+  background: var(--primary); color: var(--primary-text);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+}
+.btn:active { transform: scale(.98); }
+.btn.jade { background: var(--jade); color: #fff; }
+:root[data-theme="dark"] .btn.jade { color: #08201a; }
+.btn.coral { background: var(--coral); color: #fff; }
+:root[data-theme="dark"] .btn.coral { color: #2a0d08; }
+.btn.ghost { background: transparent; color: var(--text); border-color: var(--border); }
+.btn.danger { background: var(--danger); color: #fff; }
+:root[data-theme="dark"] .btn.danger { color: #2a0d08; }
+.btn.small { min-height: 44px; padding: 6px 12px; font-size: .95rem; }
+.btn.block { width: 100%; }
+.btn:disabled { opacity: .5; cursor: not-allowed; }
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+.icon-btn {
+  min-width: 48px; min-height: 48px; font-size: 1.3rem;
+  border: 2px solid rgba(255,255,255,.4); border-radius: 12px;
+  background: transparent; color: inherit; cursor: pointer;
+}
+
+/* =========================================================
+   5. STARTSEITE-KACHELN UND UNTERE NAVIGATION
+   ========================================================= */
+.tiles { display: grid; gap: 12px; margin: 16px 0; }
+.tile {
+  display: flex; align-items: center; gap: 14px;
+  padding: 20px; text-align: left;
+  border: 0; border-radius: 20px;
+  font: inherit; cursor: pointer; color: #fff;
+  box-shadow: var(--shadow);
+}
+.tile .emoji { font-size: 2.4rem; }
+.tile strong { display: block; font-size: 1.4rem; }
+.tile span.sub { font-size: .95rem; opacity: .95; }
+.tile.t-erleben { background: var(--coral); }
+.tile.t-verstehen { background: var(--jade); }
+.tile.t-begegnen { background: var(--primary); }
+:root[data-theme="dark"] .tile.t-erleben { color: #2a0d08; }
+:root[data-theme="dark"] .tile.t-verstehen { color: #08201a; }
+:root[data-theme="dark"] .tile.t-begegnen { background: #2a4a85; color: #fff; }
+
+.bottom-nav {
+  position: fixed; left: 0; right: 0; bottom: 0; z-index: 60;
+  display: grid; grid-template-columns: repeat(5, 1fr);
+  background: var(--bg-card);
+  border-top: 2px solid var(--border);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+.bottom-nav button {
+  font: inherit; font-size: .72rem; font-weight: 600;
+  min-height: 62px; border: 0; background: transparent;
+  color: var(--text-soft); cursor: pointer;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+}
+.bottom-nav button .ni { font-size: 1.4rem; }
+.bottom-nav button[aria-current="page"] { color: var(--coral); border-top: 4px solid var(--coral); }
+
+/* =========================================================
+   6. ANSICHTEN, KARTEN, CHIPS
+   ========================================================= */
+main { padding: 14px; max-width: 760px; margin: 0 auto; }
+.view { display: none; }
+.view.active { display: block; }
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px; margin: 12px 0;
+  box-shadow: var(--shadow);
+}
+.card.fav { border-left: 6px solid var(--coral); }
+.card h3 { margin-bottom: .2em; }
+.meta { color: var(--text-soft); font-size: .88rem; }
+.chip {
+  display: inline-block; padding: 3px 10px; margin: 2px 4px 2px 0;
+  border-radius: 999px; font-size: .82rem; font-weight: 700;
+  background: var(--jade-soft); color: var(--jade);
+}
+.chip.coral { background: var(--coral-soft); color: var(--coral); }
+.card-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.field-block { margin: 8px 0; }
+.field-block b { display: block; font-size: .85rem; color: var(--jade); }
+.big-zh { font-size: 1.6rem; font-weight: 700; }
+
+.subtabs { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0 8px; }
+.subtabs button {
+  flex: 0 0 auto; font: inherit; font-weight: 700;
+  min-height: 46px; padding: 6px 16px;
+  border: 2px solid var(--border); border-radius: 999px;
+  background: var(--bg-card); color: var(--text); cursor: pointer;
+}
+.subtabs button[aria-selected="true"] { background: var(--jade); color: #fff; border-color: var(--jade); }
+:root[data-theme="dark"] .subtabs button[aria-selected="true"] { color: #08201a; }
+
+.empty { text-align: center; color: var(--text-soft); padding: 24px 8px; }
+.notice {
+  background: var(--coral-soft); color: var(--text);
+  border-left: 6px solid var(--coral);
+  padding: 10px 12px; border-radius: 10px; margin: 10px 0; font-size: .95rem;
+}
+
+/* Fotos und Audio */
+.photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; margin: 8px 0; }
+.photo-item { position: relative; }
+.photo-item img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 12px; display: block; }
+.photo-item button {
+  position: absolute; top: 4px; right: 4px;
+  min-width: 40px; min-height: 40px; border-radius: 50%;
+  border: 0; background: var(--danger); color: #fff; font-size: 1.1rem; cursor: pointer;
+}
+.audio-box { border: 2px dashed var(--border); border-radius: 14px; padding: 10px; margin: 10px 0; }
+.rec-status { font-weight: 700; }
+.rec-status.live { color: var(--coral); }
+.rec-dot { display: inline-block; width: 12px; height: 12px; border-radius: 50%; background: var(--coral); margin-right: 6px; animation: pulse 1s infinite; }
+@keyframes pulse { 50% { opacity: .25; } }
+audio { width: 100%; margin: 6px 0; }
+
+/* Statistik */
+.stats { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat { background: var(--bg-card); border: 1px solid var(--border); border-radius: var(--radius); padding: 14px; text-align: center; }
+.stat .num { font-size: 2rem; font-weight: 800; color: var(--coral); }
+.progress { height: 14px; background: var(--bg-soft); border-radius: 999px; overflow: hidden; }
+.progress > div { height: 100%; background: var(--jade); width: 0; transition: width .3s; }
+
+/* =========================================================
+   7. DIALOGE, TOAST
+   ========================================================= */
+dialog {
+  width: min(94vw, 560px); max-height: 90vh;
+  border: 0; border-radius: 20px; padding: 18px;
+  background: var(--bg-card); color: var(--text);
+  box-shadow: 0 8px 40px rgba(0,0,0,.4);
+}
+dialog::backdrop { background: rgba(0,0,0,.55); }
+#toast-area {
+  position: fixed; left: 10px; right: 10px; bottom: 80px; z-index: 200;
+  display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+}
+.toast {
+  background: var(--primary); color: var(--primary-text);
+  padding: 12px 16px; border-radius: 12px; font-weight: 600;
+  box-shadow: var(--shadow); pointer-events: auto;
+}
+.toast.error { background: var(--danger); color: #fff; }
+:root[data-theme="dark"] .toast.error { color: #2a0d08; }
+
+@media (min-width: 700px) {
+  .tiles { grid-template-columns: repeat(3, 1fr); }
+  .tile { flex-direction: column; text-align: center; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+
+<body>
+
+<!-- =========================================================
+     KOPFBEREICH mit Titel, Dark-Mode-Umschalter, Suche, Filter
+     ========================================================= -->
+<header class="app-header">
+  <div class="header-row">
+    <h1>🧧 Taiwan entdecken <span class="zh" lang="zh-Hant">臺灣</span></h1>
+    <button class="icon-btn" id="btn-filter-toggle" type="button" aria-expanded="false" aria-controls="filter-panel" aria-label="Filter ein- oder ausblenden">⚙️</button>
+    <button class="icon-btn" id="btn-theme" type="button" aria-label="Dark Mode umschalten">🌙</button>
+  </div>
+
+  <form class="search-row" id="search-form" role="search">
+    <label for="global-search" class="sr-only">Alle Inhalte durchsuchen</label>
+    <input type="search" id="global-search" placeholder="🔍 Alles durchsuchen …" autocomplete="off">
+  </form>
+
+  <div class="filter-panel hidden" id="filter-panel">
+    <div>
+      <label for="filter-area">Bereich</label>
+      <select id="filter-area">
+        <option value="alle">Alle Bereiche</option>
+        <option value="erleben">Erleben</option>
+        <option value="verstehen">Verstehen</option>
+        <option value="begegnen">Begegnen</option>
+      </select>
+    </div>
+    <div>
+      <label for="filter-category">Kategorie</label>
+      <select id="filter-category"><option value="alle">Alle Kategorien</option></select>
+    </div>
+    <div>
+      <label for="filter-period">Zeitraum</label>
+      <select id="filter-period">
+        <option value="alle">Gesamter Zeitraum</option>
+        <option value="7">Letzte 7 Tage</option>
+        <option value="30">Letzte 30 Tage</option>
+        <option value="365">Letztes Jahr</option>
+      </select>
+    </div>
+    <div class="checkbox-label" style="align-self:end">
+      <input type="checkbox" id="filter-fav"><label for="filter-fav" style="margin:0">Nur Favoriten ⭐</label>
+    </div>
+    <button class="btn ghost small full" id="btn-filter-reset" type="button">Filter zurücksetzen</button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ===================== STARTSEITE ===================== -->
+  <section class="view active" id="view-start" aria-labelledby="h-start">
+    <h2 id="h-start">你好! Willkommen 👋</h2>
+    <p>Sammle Eindrücke, verstehe Alltag und komm mit Menschen ins Gespräch.</p>
+    <div class="tiles">
+      <button class="tile t-erleben" type="button" data-goto="erleben">
+        <span class="emoji" aria-hidden="true">📔</span>
+        <span><strong>Erleben</strong><span class="sub">Tagebuch, Fotos, Audio, Sammelkarten</span></span>
+      </button>
+      <button class="tile t-verstehen" type="button" data-goto="verstehen">
+        <span class="emoji" aria-hidden="true">💡</span>
+        <span><strong>Verstehen</strong><span class="sub">Perspektivwechsel, Challenges, Wörter</span></span>
+      </button>
+      <button class="tile t-begegnen" type="button" data-goto="begegnen">
+        <span class="emoji" aria-hidden="true">💬</span>
+        <span><strong>Begegnen</strong><span class="sub">Gesprächs-Starter &amp; Interviews</span></span>
+      </button>
+    </div>
+    <div class="card">
+      <h3>🎲 Heutige Anregung</h3>
+      <div id="start-suggestion"></div>
+    </div>
+  </section>
+
+  <!-- ===================== ERLEBEN ===================== -->
+  <section class="view" id="view-erleben" aria-labelledby="h-erleben">
+    <h2 id="h-erleben">📔 Erleben</h2>
+    <div class="subtabs" role="tablist" aria-label="Erleben Unterbereiche">
+      <button role="tab" type="button" data-sub="erleben" data-subview="tagebuch" aria-selected="true">Tagebuch</button>
+      <button role="tab" type="button" data-sub="erleben" data-subview="sammelkarten" aria-selected="false">Sammelkarten</button>
+      <button role="tab" type="button" data-sub="erleben" data-subview="woche" aria-selected="false">Wochenrückblick</button>
+    </div>
+
+    <div id="erleben-tagebuch" class="subview" data-group="erleben">
+      <button class="btn coral block" id="btn-new-diary" type="button">➕ Neuer Tagebuch-Eintrag</button>
+      <div id="list-diary"></div>
+    </div>
+    <div id="erleben-sammelkarten" class="subview hidden" data-group="erleben">
+      <button class="btn coral block" id="btn-new-collect" type="button">➕ Neue Sammelkarte</button>
+      <div id="list-collect"></div>
+    </div>
+    <div id="erleben-woche" class="subview hidden" data-group="erleben">
+      <p class="meta">Alle Einträge der letzten sieben Tage.</p>
+      <div id="list-week"></div>
+    </div>
+  </section>
+
+  <!-- ===================== VERSTEHEN ===================== -->
+  <section class="view" id="view-verstehen" aria-labelledby="h-verstehen">
+    <h2 id="h-verstehen">💡 Verstehen</h2>
+    <div class="subtabs" role="tablist" aria-label="Verstehen Unterbereiche">
+      <button role="tab" type="button" data-sub="verstehen" data-subview="perspektive" aria-selected="true">Perspektivwechsel</button>
+      <button role="tab" type="button" data-sub="verstehen" data-subview="challenges" aria-selected="false">Challenges</button>
+      <button role="tab" type="button" data-sub="verstehen" data-subview="woerter" aria-selected="false">Wörter mit Geschichte</button>
+    </div>
+
+    <div id="verstehen-perspektive" class="subview" data-group="verstehen">
+      <button class="btn coral block" id="btn-new-persp" type="button">➕ Neue Notiz</button>
+      <div id="list-persp"></div>
+    </div>
+    <div id="verstehen-challenges" class="subview hidden" data-group="verstehen">
+      <div class="card">
+        <h3>Fortschritt</h3>
+        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="challenge-progress"><div></div></div>
+        <p class="meta" id="challenge-progress-text"></p>
+        <div class="btn-row">
+          <button class="btn jade" id="btn-random-challenge" type="button">🎲 Zufalls-Challenge</button>
+          <button class="btn coral" id="btn-new-challenge" type="button">➕ Eigene Challenge</button>
+        </div>
+        <div id="random-challenge-box" aria-live="polite"></div>
+      </div>
+      <div id="list-challenges"></div>
+    </div>
+    <div id="verstehen-woerter" class="subview hidden" data-group="verstehen">
+      <button class="btn coral block" id="btn-new-word" type="button">➕ Neues Wort</button>
+      <div id="list-words"></div>
+    </div>
+  </section>
+
+  <!-- ===================== BEGEGNEN ===================== -->
+  <section class="view" id="view-begegnen" aria-labelledby="h-begegnen">
+    <h2 id="h-begegnen">💬 Begegnen</h2>
+    <div class="subtabs" role="tablist" aria-label="Begegnen Unterbereiche">
+      <button role="tab" type="button" data-sub="begegnen" data-subview="starter" aria-selected="true">Gesprächs-Starter</button>
+      <button role="tab" type="button" data-sub="begegnen" data-subview="interview" aria-selected="false">Zwei-Seiten-Interview</button>
+    </div>
+
+    <div id="begegnen-starter" class="subview" data-group="begegnen">
+      <div class="btn-row">
+        <button class="btn jade" id="btn-random-starter" type="button">🎲 Zufallsfrage</button>
+        <button class="btn coral" id="btn-new-starter" type="button">➕ Eigene Frage</button>
+      </div>
+      <div id="random-starter-box" aria-live="polite"></div>
+      <div id="list-starters"></div>
+    </div>
+    <div id="begegnen-interview" class="subview hidden" data-group="begegnen">
+      <button class="btn coral block" id="btn-new-interview" type="button">➕ Neues Interview</button>
+      <div id="list-interviews"></div>
+    </div>
+  </section>
+
+  <!-- ===================== SUCHERGEBNISSE ===================== -->
+  <section class="view" id="view-suche" aria-labelledby="h-suche">
+    <h2 id="h-suche">🔍 Suchergebnisse</h2>
+    <div id="list-search" aria-live="polite"></div>
+  </section>
+
+  <!-- ===================== STATISTIK & DATEN ===================== -->
+  <section class="view" id="view-daten" aria-labelledby="h-daten">
+    <h2 id="h-daten">📊 Statistik &amp; Daten</h2>
+    <div class="stats" id="stats-grid"></div>
+
+    <h2 style="margin-top:24px">💾 Export &amp; Import</h2>
+    <div class="notice">
+      Alle Daten bleiben auf deinem Gerät. XLSX/ODS lassen sich ohne
+      Bibliotheken nicht zuverlässig erzeugen – deshalb gibt es
+      <b>CSV-Dateien, getrennt nach Bereichen</b> (öffnen in Excel, LibreOffice, Numbers).
+      Der Medienexport erzeugt eine <b>ZIP-Datei</b> (ohne Kompression, direkt im Browser gebaut).
+    </div>
+    <div class="btn-row" style="flex-direction:column">
+      <button class="btn jade block" id="btn-export-json" type="button">💾 Backup als JSON exportieren</button>
+      <button class="btn block" id="btn-import-json" type="button">📥 JSON-Backup importieren</button>
+      <button class="btn block" id="btn-export-text" type="button">📄 Textdaten exportieren (CSV)</button>
+      <button class="btn block" id="btn-export-media" type="button">🖼️ Medien exportieren (ZIP)</button>
+      <button class="btn ghost block" id="btn-export-media-single" type="button">Medien einzeln herunterladen (Notlösung)</button>
+    </div>
+    <input type="file" id="file-import-json" accept="application/json,.json" class="hidden" aria-label="JSON-Backup-Datei auswählen">
+    <div id="export-status" class="meta" aria-live="polite"></div>
+
+    <h2 style="margin-top:24px">⚠️ Gefahrenbereich</h2>
+    <button class="btn danger block" id="btn-reset-all" type="button">Alle Daten löschen</button>
+  </section>
+</main>
+
+<!-- =========================================================
+     UNTERE NAVIGATION
+     ========================================================= -->
+<nav class="bottom-nav" aria-label="Hauptnavigation">
+  <button type="button" data-goto="start" aria-current="page"><span class="ni" aria-hidden="true">🏠</span>Start</button>
+  <button type="button" data-goto="erleben"><span class="ni" aria-hidden="true">📔</span>Erleben</button>
+  <button type="button" data-goto="verstehen"><span class="ni" aria-hidden="true">💡</span>Verstehen</button>
+  <button type="button" data-goto="begegnen"><span class="ni" aria-hidden="true">💬</span>Begegnen</button>
+  <button type="button" data-goto="daten"><span class="ni" aria-hidden="true">📊</span>Daten</button>
+</nav>
+
+<!-- =========================================================
+     DIALOGE: universeller Formular-Dialog und Bestätigungsdialog.
+     Das Formular wird in Teil 2 dynamisch befüllt.
+     ========================================================= -->
+<dialog id="dlg-form" aria-labelledby="dlg-form-title">
+  <h2 id="dlg-form-title">Eintrag</h2>
+  <form id="dlg-form-el" method="dialog" novalidate>
+    <div id="dlg-form-body"></div>
+    <div class="btn-row">
+      <button class="btn jade" type="submit" id="dlg-form-save">💾 Speichern</button>
+      <button class="btn ghost" type="button" id="dlg-form-cancel">Abbrechen</button>
+    </div>
+  </form>
+</dialog>
+
+<dialog id="dlg-confirm" aria-labelledby="dlg-confirm-title">
+  <h2 id="dlg-confirm-title">Wirklich löschen?</h2>
+  <p id="dlg-confirm-text"></p>
+  <div class="btn-row">
+    <button class="btn danger" type="button" id="dlg-confirm-yes">Ja, endgültig löschen</button>
+    <button class="btn ghost" type="button" id="dlg-confirm-no">Abbrechen</button>
+  </div>
+</dialog>
+
+<div id="toast-area" role="status" aria-live="polite"></div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   TEIL 1 – JAVASCRIPT-GRUNDLAGEN
+   A. Konstanten & Kategorien
+   B. Hilfsfunktionen (DOM, Datum, IDs, Escape)
+   C. localStorage (Daten + Einstellungen)
+   D. IndexedDB (Fotos + Audio als Blob)
+   E. Beispieldaten (nur beim allerersten Start)
+   F. Toast & Bestätigungsdialog
+   ========================================================= */
+
+/* ---------- A. Konstanten ---------- */
+const LS_KEY_DATA = "taiwan_entdecken_daten_v1";
+const LS_KEY_SETTINGS = "taiwan_entdecken_einstellungen_v1";
+const DB_NAME = "taiwan_entdecken_medien";
+const DB_VERSION = 1;
+const STORE_MEDIA = "medien";
+
+const MOODS = ["😄 Begeistert", "🙂 Gut", "😐 Neutral", "😕 Verwirrt", "😢 Heimweh", "😴 Müde"];
+const COLLECT_TYPES = ["Essen", "Geräusche", "Farben", "Gerüche", "Orte"];
+const STARTER_CATEGORIES = ["Schule", "Familie", "Essen", "Freizeit", "Musik", "Zukunft", "Heimat", "Unterschiede im Alltag"];
+
+/* Zuordnung Bereich -> Kategorien (für den Kategorie-Filter) */
+const CATEGORY_BY_AREA = {
+  erleben: COLLECT_TYPES,
+  verstehen: ["Challenge offen", "Challenge erledigt"],
+  begegnen: STARTER_CATEGORIES
+};
+
+/* ---------- B. Hilfsfunktionen ---------- */
+const $ = (sel, root = document) => root.querySelector(sel);
+const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+/** Erzeugt eine eindeutige ID. */
+function uid(prefix = "id") {
+  return prefix + "_" + Date.now().toString(36) + "_" + Math.random().toString(36).slice(2, 8);
+}
+/** HTML-Escape: verhindert, dass Nutzertext als HTML interpretiert wird. */
+function esc(s) {
+  return String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+/** Text mit Zeilenumbrüchen sicher darstellen. */
+function escMultiline(s) { return esc(s).replace(/\n/g, "<br>"); }
+/** Heutiges Datum als YYYY-MM-DD (lokale Zeit). */
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+}
+/** ISO-Datum -> deutsches Format (TT.MM.JJJJ). */
+function formatDate(iso) {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).slice(0, 10).split("-");
+  return `${d}.${m}.${y}`;
+}
+/** Anzahl Tage zwischen heute und einem ISO-Datum. */
+function daysAgo(iso) {
+  if (!iso) return Infinity;
+  const a = new Date(iso.slice(0, 10) + "T00:00:00");
+  const b = new Date(todayISO() + "T00:00:00");
+  return Math.round((b - a) / 86400000);
+}
+/** Sekunden -> mm:ss */
+function formatTimer(sec) {
+  return String(Math.floor(sec / 60)).padStart(2, "0") + ":" + String(sec % 60).padStart(2, "0");
+}
+/** Zufallselement aus Array. */
+function randomItem(arr) { return arr.length ? arr[Math.floor(Math.random() * arr.length)] : null; }
+
+/* ---------- C. localStorage ---------- */
+/** Leere Datenstruktur – alle Textdaten der App. */
+function emptyData() {
+  return {
+    diary: [],        // Tagebuch-Einträge
+    collect: [],      // Sammelkarten
+    persp: [],        // Perspektivwechsel-Notizen
+    challenges: [],   // Challenges
+    words: [],        // Wörter mit Geschichte
+    starters: [],     // Gesprächs-Starter
+    interviews: [],   // Zwei-Seiten-Interviews
+    mediaMeta: []     // Metadaten zu Medien (id, entryId, type, date, name)
+  };
+}
+/** Globaler Zustand */
+let DATA = emptyData();
+let SETTINGS = { theme: "light", seeded: false };
+
+/** Daten laden; bei kaputtem JSON verständliche Meldung statt Absturz. */
+function loadAll() {
+  try {
+    const raw = localStorage.getItem(LS_KEY_DATA);
+    if (raw) DATA = Object.assign(emptyData(), JSON.parse(raw));
+  } catch (e) {
+    console.error(e);
+    DATA = emptyData();
+    setTimeout(() => toast("Gespeicherte Daten waren beschädigt und wurden zurückgesetzt. Ein JSON-Backup kann importiert werden.", true), 300);
+  }
+  try {
+    const rawS = localStorage.getItem(LS_KEY_SETTINGS);
+    if (rawS) SETTINGS = Object.assign(SETTINGS, JSON.parse(rawS));
+  } catch (e) { console.error(e); }
+}
+/** Daten speichern; Speicher voll -> Fehlermeldung. */
+function saveData() {
+  try {
+    localStorage.setItem(LS_KEY_DATA, JSON.stringify(DATA));
+    return true;
+  } catch (e) {
+    toast("Speichern nicht möglich: Der Browser-Speicher ist voll oder gesperrt. Bitte exportiere ein Backup und lösche alte Einträge.", true);
+    return false;
+  }
+}
+function saveSettings() {
+  try { localStorage.setItem(LS_KEY_SETTINGS, JSON.stringify(SETTINGS)); }
+  catch (e) { toast("Einstellungen konnten nicht gespeichert werden.", true); }
+}
+
+/* ---------- D. IndexedDB (Fotos & Audio) ---------- */
+let dbPromise = null;
+
+/** Öffnet die Datenbank (einmalig, Ergebnis wird gemerkt). */
+function openDB() {
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    if (!("indexedDB" in window)) {
+      reject(new Error("IndexedDB wird von diesem Browser nicht unterstützt."));
+      return;
+    }
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_MEDIA)) {
+        const st = db.createObjectStore(STORE_MEDIA, { keyPath: "id" });
+        st.createIndex("entryId", "entryId", { unique: false });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error || new Error("Datenbank konnte nicht geöffnet werden."));
+  });
+  return dbPromise;
+}
+/** Hilfsfunktion: IDBRequest -> Promise */
+function reqToPromise(req) {
+  return new Promise((res, rej) => { req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); });
+}
+/** Medium speichern. Format: {id, entryId, type:"photo"|"audio", mime, name, date, blob} */
+async function dbPutMedia(rec) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_MEDIA, "readwrite");
+  tx.objectStore(STORE_MEDIA).put(rec);
+  return new Promise((res, rej) => { tx.oncomplete = () => res(rec); tx.onerror = () => rej(tx.error); tx.onabort = () => rej(tx.error); });
+}
+async function dbGetMedia(id) {
+  const db = await openDB();
+  return reqToPromise(db.transaction(STORE_MEDIA).objectStore(STORE_MEDIA).get(id));
+}
+async function dbGetAllMedia() {
+  const db = await openDB();
+  return reqToPromise(db.transaction(STORE_MEDIA).objectStore(STORE_MEDIA).getAll());
+}
+async function dbGetMediaByEntry(entryId) {
+  const db = await openDB();
+  return reqToPromise(db.transaction(STORE_MEDIA).objectStore(STORE_MEDIA).index("entryId").getAll(entryId));
+}
+async function dbDeleteMedia(id) {
+  const db = await openDB();
+  const tx = db.transaction(STORE_MEDIA, "readwrite");
+  tx.objectStore(STORE_MEDIA).delete(id);
+  return new Promise((res, rej) => { tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
+}
+async function dbClearMedia() {
+  const db = await openDB();
+  const tx = db.transaction(STORE_MEDIA, "readwrite");
+  tx.objectStore(STORE_MEDIA).clear();
+  return new Promise((res, rej) => { tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); });
+}
+
+/** Medien-Metadaten (localStorage) synchron halten, damit Statistik ohne DB-Zugriff geht. */
+function addMediaMeta(rec) {
+  DATA.mediaMeta = DATA.mediaMeta.filter(m => m.id !== rec.id);
+  DATA.mediaMeta.push({ id: rec.id, entryId: rec.entryId, type: rec.type, date: rec.date, name: rec.name, mime: rec.mime });
+}
+function removeMediaMeta(id) { DATA.mediaMeta = DATA.mediaMeta.filter(m => m.id !== id); }
+
+/** Alle Medien eines Eintrags löschen (beim Löschen des Eintrags). */
+async function deleteMediaOfEntry(entryId) {
+  try {
+    const list = await dbGetMediaByEntry(entryId);
+    for (const m of list) await dbDeleteMedia(m.id);
+  } catch (e) { console.error(e); }
+  DATA.mediaMeta = DATA.mediaMeta.filter(m => m.entryId !== entryId);
+}
+
+/* ---------- E. Beispieldaten (nur beim allerersten Start) ---------- */
+/**
+ * Wird nur ausgeführt, wenn SETTINGS.seeded noch false ist.
+ * Danach bleibt das Flag dauerhaft true – auch wenn der Nutzer
+ * alle Beispiele löscht, kommen sie nicht wieder.
+ */
+function seedExampleData() {
+  if (SETTINGS.seeded) return;
+  const t = todayISO();
+
+  DATA.diary.push({
+    id: uid("tb"), date: t, mood: MOODS[0],
+    title: "Mein erster Besuch auf dem Nachtmarkt",
+    text: "Überall Gerüche, Lichter und Stimmen. Ich habe stinkenden Tofu probiert – schmeckt besser, als er riecht!",
+    unexpected: "Viele Menschen bezahlen mit dem Handy, aber auch Bargeld wird gern genommen.",
+    highlight: "Die Bubble Tea mit frischer Taro-Füllung.",
+    observation: "Man teilt Essen am Tisch ganz selbstverständlich.",
+    fav: false, created: Date.now()
+  });
+
+  DATA.persp.push({
+    id: uid("pw"), date: t,
+    observed: "Menschen räumen im Schnellrestaurant ihr Tablett selbst weg.",
+    explanation: "Vielleicht gilt es als höflich und gemeinschaftlich, Ordnung zu hinterlassen.",
+    assumption: "Ich dachte, dass das Personal das immer übernimmt.",
+    fav: false, created: Date.now()
+  });
+
+  DATA.words.push(
+    { id: uid("wo"), date: t, zh: "客氣", pinyin: "kèqì", de: "höflich, zurückhaltend",
+      explanation: "Man lehnt Angebote erst mehrfach ab, um bescheiden zu wirken.",
+      situation: "Gastfamilie bot mir mehr Reis an.", note: "Nächstes Mal zweimal höflich ablehnen, dann annehmen.", fav: false, created: Date.now() },
+    { id: uid("wo"), date: t, zh: "緣分", pinyin: "yuánfèn", de: "schicksalhafte Verbindung",
+      explanation: "Der Glaube, dass Begegnungen vorbestimmt sind.",
+      situation: "Meine Banknachbarin sagte das über unser Kennenlernen.", note: "", fav: false, created: Date.now() }
+  );
+
+  DATA.starters.push(
+    { id: uid("gs"), category: "Essen", de: "Was sollte man in dieser Stadt unbedingt ausprobieren?",
+      en: "What should one definitely try in this city?", zh: "在這個城市,有什麼一定要試試看的?", pinyin: "Zài zhège chéngshì, yǒu shénme yídìng yào shìshìkàn de?", fav: false, example: true, created: Date.now() },
+    { id: uid("gs"), category: "Familie", de: "Welche Tradition ist deiner Familie wichtig?",
+      en: "Which tradition is important to your family?", zh: "你的家庭有什麼重要的傳統?", pinyin: "Nǐ de jiātíng yǒu shénme zhòngyào de chuántǒng?", fav: false, example: true, created: Date.now() },
+    { id: uid("gs"), category: "Unterschiede im Alltag", de: "Was würden Besucher oft über Taiwan missverstehen?",
+      en: "What do visitors often misunderstand about Taiwan?", zh: "外國人常常誤會臺灣的什麼?", pinyin: "Wàiguórén chángcháng wùhuì Táiwān de shénme?", fav: false, example: true, created: Date.now() }
+  );
+
+  DATA.challenges.push(
+    { id: uid("ch"), text: "Finde eine Alltagssituation, die in Taiwan anders abläuft als zuhause.", done: false, doneDate: "", note: "", fav: false, created: Date.now() },
+    { id: uid("ch"), text: "Probiere ein Essen, das du noch nicht kennst.", done: false, doneDate: "", note: "", fav: false, created: Date.now() }
+  );
+
+  SETTINGS.seeded = true;
+  saveData();
+  saveSettings();
+}
+
+/** Vordefinierte Challenge-Ideen für den Zufallsbutton (Teil 2 nutzt sie). */
+const CHALLENGE_POOL = [
+  "Finde eine Alltagssituation, die in Taiwan anders abläuft als zuhause.",
+  "Frage jemanden nach einer Tradition in der Familie.",
+  "Beobachte, wie Menschen in einer Warteschlange miteinander umgehen.",
+  "Probiere ein Essen, das du noch nicht kennst.",
+  "Frage nach einem Ort, der Menschen vor Ort wichtig ist.",
+  "Notiere etwas, das du zuerst missverstanden hast."
+];
+
+/** Vordefinierte Gesprächs-Starter (Teil 2 nutzt sie für den Zufallsbutton). */
+const STARTER_POOL = [
+  { category: "Heimat", de: "Was bedeutet Heimat für dich?", en: "What does home mean to you?", zh: "「家鄉」對你來說代表什麼?", pinyin: "“Jiāxiāng” duì nǐ lái shuō dàibiǎo shénme?" },
+  { category: "Schule", de: "Welche Erinnerung an deine Schulzeit ist dir besonders wichtig?", en: "Which memory from your school days is especially important to you?", zh: "你學生時代有哪一個特別重要的回憶?", pinyin: "Nǐ xuéshēng shídài yǒu nǎ yí ge tèbié zhòngyào de huíyì?" },
+  { category: "Musik", de: "Welche Musik hörst du gerade am liebsten?", en: "What music are you listening to most these days?", zh: "你最近最喜歡聽什麼音樂?", pinyin: "Nǐ zuìjìn zuì xǐhuān tīng shénme yīnyuè?" },
+  { category: "Zukunft", de: "Was möchtest du in den nächsten Jahren erreichen?", en: "What would you like to achieve in the next few years?", zh: "你未來幾年想完成什麼?", pinyin: "Nǐ wèilái jǐ nián xiǎng wánchéng shénme?" },
+  { category: "Freizeit", de: "Was machst du am liebsten am Wochenende?", en: "What do you like to do most on weekends?", zh: "你週末最喜歡做什麼?", pinyin: "Nǐ zhōumò zuì xǐhuān zuò shénme?" },
+  { category: "Familie", de: "Gibt es ein Familienrezept, das dir besonders wichtig ist?", en: "Is there a family recipe that is especially important to you?", zh: "你們家有沒有特別重要的家傳食譜?", pinyin: "Nǐmen jiā yǒu méiyǒu tèbié zhòngyào de jiāchuán shípǔ?" },
+  { category: "Essen", de: "Welches Gericht erinnert dich an zuhause?", en: "Which dish reminds you of home?", zh: "哪一道菜讓你想起家?", pinyin: "Nǎ yí dào cài ràng nǐ xiǎngqǐ jiā?" },
+  { category: "Schule", de: "Wie sieht ein ganz normaler Schultag bei dir aus?", en: "What does a totally normal school day look like for you?", zh: "你平常的一天在學校是怎麼過的?", pinyin: "Nǐ píngcháng de yì tiān zài xuéxiào shì zěnme guò de?" }
+];
+
+/* ---------- F. Toast & Bestätigungsdialog ---------- */
+
+/**
+ * Zeigt eine kurze Meldung unten am Bildschirm an.
+ * @param {string} msg   Text der Meldung
+ * @param {boolean} isError  true = rote Fehlermeldung (bleibt länger sichtbar)
+ */
+function toast(msg, isError = false) {
+  const area = $("#toast-area");
+  if (!area) return;
+  const el = document.createElement("div");
+  el.className = "toast" + (isError ? " error" : "");
+  el.textContent = msg;
+  area.appendChild(el);
+  setTimeout(() => el.remove(), isError ? 7000 : 3000);
+}
+
+/**
+ * Bestätigungsdialog vor dem endgültigen Löschen.
+ * Gibt ein Promise zurück: true = löschen, false = abbrechen.
+ */
+function confirmDelete(text) {
+  return new Promise(resolve => {
+    const dlg = $("#dlg-confirm");
+    $("#dlg-confirm-text").textContent = text || "Dieser Eintrag wird endgültig gelöscht. Das kann nicht rückgängig gemacht werden.";
+    const yes = $("#dlg-confirm-yes");
+    const no = $("#dlg-confirm-no");
+
+    function cleanup(result) {
+      yes.removeEventListener("click", onYes);
+      no.removeEventListener("click", onNo);
+      dlg.removeEventListener("cancel", onNo);
+      if (dlg.open) dlg.close();
+      resolve(result);
+    }
+    function onYes() { cleanup(true); }
+    function onNo(e) { if (e && e.preventDefault) e.preventDefault(); cleanup(false); }
+
+    yes.addEventListener("click", onYes);
+    no.addEventListener("click", onNo);
+    dlg.addEventListener("cancel", onNo);   // ESC-Taste
+    dlg.showModal();
+    no.focus();                             // sichere Voreinstellung: Abbrechen
+  });
+}
+
+/* ---------- Theme (Dark Mode) ---------- */
+/** Wendet das gespeicherte Theme an und aktualisiert den Umschalter. */
+function applyTheme() {
+  document.documentElement.setAttribute("data-theme", SETTINGS.theme === "dark" ? "dark" : "light");
+  const btn = $("#btn-theme");
+  if (btn) {
+    btn.textContent = SETTINGS.theme === "dark" ? "☀️" : "🌙";
+    btn.setAttribute("aria-label", SETTINGS.theme === "dark" ? "Zum hellen Modus wechseln" : "Zum Dark Mode wechseln");
+  }
+}
+function toggleTheme() {
+  SETTINGS.theme = SETTINGS.theme === "dark" ? "light" : "dark";
+  applyTheme();
+  saveSettings();
+}
+
+/* ---------- Navigation (Grundlogik) ---------- */
+/** Aktuell sichtbarer Hauptbereich */
+let currentView = "start";
+
+/** Wechselt die Hauptansicht (start, erleben, verstehen, begegnen, suche, daten). */
+function showView(name) {
+  currentView = name;
+  $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-" + name));
+  $$(".bottom-nav button").forEach(b => {
+    if (b.dataset.goto === name) b.setAttribute("aria-current", "page");
+    else b.removeAttribute("aria-current");
+  });
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  // renderAll() wird in Teil 2 definiert; hier nur aufgerufen, falls vorhanden.
+  if (typeof renderAll === "function") renderAll();
+}
+
+/** Wechselt einen Unterbereich (z. B. Tagebuch -> Sammelkarten). */
+function showSubview(group, sub) {
+  $$(`.subview[data-group="${group}"]`).forEach(el => el.classList.toggle("hidden", el.id !== `${group}-${sub}`));
+  $$(`.subtabs button[data-sub="${group}"]`).forEach(b => b.setAttribute("aria-selected", String(b.dataset.subview === sub)));
+}
+
+/** Grundlegende Ereignisse, die schon in Teil 1 funktionieren müssen. */
+function initCoreEvents() {
+  $("#btn-theme").addEventListener("click", toggleTheme);
+
+  // Filterbereich ein-/ausklappen
+  $("#btn-filter-toggle").addEventListener("click", e => {
+    const panel = $("#filter-panel");
+    const open = panel.classList.toggle("hidden") === false;
+    e.currentTarget.setAttribute("aria-expanded", String(open));
+  });
+
+  // Kacheln und untere Navigation
+  $$("[data-goto]").forEach(b => b.addEventListener("click", () => showView(b.dataset.goto)));
+
+  // Unter-Tabs
+  $$(".subtabs button").forEach(b => b.addEventListener("click", () => showSubview(b.dataset.sub, b.dataset.subview)));
+
+  // Dialog-Abbrechen-Button
+  $("#dlg-form-cancel").addEventListener("click", () => $("#dlg-form").close());
+}
+
+// === ENDE TEIL 1 ===
+/* =========================================================
+   TEIL 2 – FORMULARE, MEDIEN, RENDERING, SUCHE & FILTER
+   G. Filter & Suche
+   H. Medien-Arbeitsspeicher (Object-URLs)
+   I. Universeller Formular-Dialog
+   J. Foto-Verwaltung im Formular
+   K. Audio-Aufnahme im Formular
+   L. Renderer (Karten für alle Bereiche)
+   M. Aktionen (Neu, Bearbeiten, Löschen, Favorit)
+   N. Zufallsfunktionen (Challenge, Gesprächs-Starter)
+   O. Ereignisse für Teil 2
+   ========================================================= */
+
+/* ---------- G. Filter & Suche ---------- */
+const FILTER = { query: "", area: "alle", category: "alle", period: "alle", fav: false };
+
+/** Füllt das Kategorie-Dropdown passend zum gewählten Bereich. */
+function fillCategoryFilter() {
+  const sel = $("#filter-category");
+  let cats = [];
+  if (FILTER.area === "alle") cats = [].concat(CATEGORY_BY_AREA.erleben, CATEGORY_BY_AREA.verstehen, CATEGORY_BY_AREA.begegnen);
+  else cats = CATEGORY_BY_AREA[FILTER.area] || [];
+  const unique = Array.from(new Set(cats));
+  sel.innerHTML = '<option value="alle">Alle Kategorien</option>' +
+    unique.map(c => `<option value="${esc(c)}">${esc(c)}</option>`).join("");
+  sel.value = unique.includes(FILTER.category) ? FILTER.category : "alle";
+  FILTER.category = sel.value;
+}
+
+/** Prüft, ob ein Eintrag dem Zeitraum-Filter entspricht. */
+function matchPeriod(item) {
+  if (FILTER.period === "alle") return true;
+  const iso = item.date || item.doneDate || (item.created ? new Date(item.created).toISOString().slice(0, 10) : "");
+  if (!iso) return true;
+  return daysAgo(iso) <= Number(FILTER.period);
+}
+/** Prüft, ob der Suchtext in irgendeinem Textfeld vorkommt. */
+function matchQuery(item) {
+  const q = FILTER.query.trim().toLowerCase();
+  if (!q) return true;
+  return Object.entries(item).some(([k, v]) => typeof v === "string" && k !== "id" && v.toLowerCase().includes(q));
+}
+/**
+ * Gesamt-Filter für eine Liste.
+ * @param {Array} list      Einträge
+ * @param {string} area     Bereich dieser Liste (erleben/verstehen/begegnen)
+ * @param {Function} catFn  liefert die Kategorie eines Eintrags (optional)
+ */
+function applyFilters(list, area, catFn) {
+  if (FILTER.area !== "alle" && FILTER.area !== area) return [];
+  return list.filter(item => {
+    if (FILTER.fav && !item.fav) return false;
+    if (!matchPeriod(item)) return false;
+    if (!matchQuery(item)) return false;
+    if (FILTER.category !== "alle" && catFn && catFn(item) !== FILTER.category) return false;
+    return true;
+  });
+}
+/** Sind irgendwelche Filter aktiv? */
+function filtersActive() {
+  return FILTER.query.trim() || FILTER.area !== "alle" || FILTER.category !== "alle" || FILTER.period !== "alle" || FILTER.fav;
+}
+
+/* ---------- H. Object-URLs für Medien ---------- */
+/** Merkt erzeugte Object-URLs, damit sie später freigegeben werden. */
+const objectUrls = [];
+function makeUrl(blob) { const u = URL.createObjectURL(blob); objectUrls.push(u); return u; }
+function revokeAllUrls() { while (objectUrls.length) URL.revokeObjectURL(objectUrls.pop()); }
+
+/* ---------- I. Universeller Formular-Dialog ---------- */
+/**
+ * Gemeinsamer Dialog für alle Eingaben.
+ * Jedes Formular wird über eine Feld-Definition beschrieben.
+ * Feldtypen: text, textarea, date, select, checkbox
+ * Zusätzlich können Foto-/Audio-Bereiche eingeblendet werden.
+ */
+let formState = null;   // aktueller Zustand des geöffneten Dialogs
+
+function fieldHtml(f, value) {
+  const id = "f_" + f.name;
+  const req = f.required ? " required aria-required=\"true\"" : "";
+  const lang = f.lang ? ` lang="${f.lang}"` : "";
+  const cls = f.lang ? ' class="zh"' : "";
+  const ph = f.placeholder ? ` placeholder="${esc(f.placeholder)}"` : "";
+  const v = value ?? f.default ?? "";
+  if (f.type === "textarea")
+    return `<label for="${id}">${esc(f.label)}</label><textarea id="${id}" name="${f.name}"${req}${lang}${cls}${ph}>${esc(v)}</textarea>`;
+  if (f.type === "select")
+    return `<label for="${id}">${esc(f.label)}</label><select id="${id}" name="${f.name}"${req}>` +
+      f.options.map(o => `<option value="${esc(o)}"${o === v ? " selected" : ""}>${esc(o)}</option>`).join("") + `</select>`;
+  if (f.type === "checkbox")
+    return `<div class="checkbox-label" style="margin-top:12px"><input type="checkbox" id="${id}" name="${f.name}"${v ? " checked" : ""}><label for="${id}" style="margin:0">${esc(f.label)}</label></div>`;
+  return `<label for="${id}">${esc(f.label)}</label><input type="${f.type || "text"}" id="${id}" name="${f.name}" value="${esc(v)}"${req}${lang}${cls}${ph}>`;
+}
+
+/**
+ * Öffnet den Formular-Dialog.
+ * @param {Object} cfg  { title, fields, item, collection, withMedia, onSave }
+ */
+function openForm(cfg) {
+  const item = cfg.item || null;
+  formState = {
+    cfg, item,
+    entryId: item ? item.id : uid(cfg.prefix || "e"),
+    newMedia: [],         // neu hinzugefügte Medien {id,type,blob,mime,name}
+    removedMedia: [],     // IDs gelöschter Medien
+    existingMedia: [],    // bereits gespeicherte Medien dieses Eintrags
+    recorder: null
+  };
+  $("#dlg-form-title").textContent = cfg.title;
+  const body = $("#dlg-form-body");
+  body.innerHTML = cfg.fields.map(f => fieldHtml(f, item ? item[f.name] : undefined)).join("");
+
+  if (cfg.withMedia) {
+    body.insertAdjacentHTML("beforeend", mediaSectionHtml());
+    loadExistingMedia().then(renderMediaPreview);
+    bindMediaEvents();
+  }
+  // Auswahlhilfe für Interview-Fragen
+  if (cfg.onOpen) cfg.onOpen(body);
+
+  $("#dlg-form").showModal();
+  const first = body.querySelector("input,textarea,select");
+  if (first) first.focus();
+}
+
+/** Schließt den Dialog und gibt Aufnahme/Stream frei. */
+function closeForm() {
+  stopRecordingCleanup();
+  revokeAllUrls();
+  formState = null;
+  const d = $("#dlg-form");
+  if (d.open) d.close();
+}
+
+/** Liest die Werte aus dem Dialog und speichert. */
+async function submitForm(e) {
+  e.preventDefault();
+  if (!formState) return;
+  const cfg = formState.cfg;
+  const form = $("#dlg-form-el");
+  const values = {};
+  for (const f of cfg.fields) {
+    const el = form.elements[f.name];
+    values[f.name] = f.type === "checkbox" ? el.checked : el.value.trim();
+    if (f.required && !values[f.name]) {
+      toast(`Bitte fülle das Feld „${f.label}“ aus.`, true);
+      el.focus();
+      return;
+    }
+  }
+  if (cfg.validate) {
+    const msg = cfg.validate(values);
+    if (msg) { toast(msg, true); return; }
+  }
+  // Laufende Aufnahme beenden, damit sie nicht verloren geht
+  if (formState.recorder && formState.recorder.state === "recording") await stopRecording();
+
+  const col = DATA[cfg.collection];
+  const existing = formState.item;
+  let target;
+  if (existing) { Object.assign(existing, values); target = existing; }
+  else { target = Object.assign({ id: formState.entryId, fav: false, created: Date.now() }, cfg.extra || {}, values); col.unshift(target); }
+
+  // Medien speichern bzw. löschen
+  if (cfg.withMedia) {
+    try {
+      for (const id of formState.removedMedia) { await dbDeleteMedia(id); removeMediaMeta(id); }
+      for (const m of formState.newMedia) {
+        const rec = { id: m.id, entryId: target.id, type: m.type, mime: m.mime, name: m.name, date: todayISO(), blob: m.blob };
+        await dbPutMedia(rec);
+        addMediaMeta(rec);
+      }
+    } catch (err) {
+      console.error(err);
+      toast("Fotos oder Audio konnten nicht gespeichert werden. Der Text wurde gespeichert. (" + (err.message || "Speicherfehler") + ")", true);
+    }
+  }
+  if (saveData()) toast("Gespeichert ✔");
+  closeForm();
+  renderAll();
+}
+
+/* ---------- J. Foto-Verwaltung ---------- */
+function mediaSectionHtml() {
+  return `
+  <fieldset style="border:0;padding:0;margin:14px 0 0">
+    <legend style="font-weight:700">📷 Fotos</legend>
+    <p class="meta">Die Kamera ist optional. Du kannst auch Bilder aus der Galerie wählen.</p>
+    <div class="btn-row">
+      <button type="button" class="btn jade" id="btn-photo-cam">📷 Foto aufnehmen / wählen</button>
+      <button type="button" class="btn ghost" id="btn-photo-gal">🖼️ Aus Galerie</button>
+    </div>
+    <!-- capture="environment" öffnet auf Smartphones bevorzugt die Kamera -->
+    <input type="file" id="file-photo-cam" accept="image/*" capture="environment" class="hidden" aria-label="Foto mit Kamera aufnehmen">
+    <input type="file" id="file-photo-gal" accept="image/*" multiple class="hidden" aria-label="Fotos aus der Galerie wählen">
+    <div class="photo-grid" id="photo-preview"></div>
+  </fieldset>
+  <fieldset style="border:0;padding:0;margin:14px 0 0">
+    <legend style="font-weight:700">🎙️ Audioaufnahme</legend>
+    <div class="audio-box">
+      <div class="rec-status" id="rec-status" aria-live="polite">Bereit</div>
+      <div id="rec-timer" style="font-size:1.6rem;font-weight:800">00:00</div>
+      <div class="btn-row">
+        <button type="button" class="btn coral" id="btn-rec-start">⏺ Aufnahme starten</button>
+        <button type="button" class="btn ghost" id="btn-rec-stop" disabled>⏹ Stoppen</button>
+        <button type="button" class="btn ghost" id="btn-rec-play" disabled>▶ Anhören</button>
+        <button type="button" class="btn danger" id="btn-rec-del" disabled>🗑 Löschen</button>
+      </div>
+      <div id="rec-preview"></div>
+      <div id="audio-list"></div>
+    </div>
+  </fieldset>`;
+}
+
+/** Lädt vorhandene Medien eines bearbeiteten Eintrags. */
+async function loadExistingMedia() {
+  if (!formState || !formState.item) return;
+  try { formState.existingMedia = await dbGetMediaByEntry(formState.item.id); }
+  catch (e) { console.error(e); toast("Gespeicherte Medien konnten nicht geladen werden.", true); }
+}
+
+/** Fotos und Audio-Liste im Dialog neu zeichnen. */
+function renderMediaPreview() {
+  if (!formState) return;
+  const removed = new Set(formState.removedMedia);
+  const all = formState.existingMedia.filter(m => !removed.has(m.id)).concat(formState.newMedia);
+  const photos = all.filter(m => m.type === "photo");
+  const audios = all.filter(m => m.type === "audio");
+
+  const grid = $("#photo-preview");
+  if (grid) {
+    grid.innerHTML = photos.map(m => `
+      <div class="photo-item">
+        <img src="${makeUrl(m.blob)}" alt="Foto-Vorschau">
+        <button type="button" data-del-media="${m.id}" aria-label="Foto löschen">✕</button>
+      </div>`).join("") || '<p class="meta">Noch keine Fotos.</p>';
+  }
+  const list = $("#audio-list");
+  if (list) {
+    list.innerHTML = audios.map(m => `
+      <div class="field-block">
+        <audio controls src="${makeUrl(m.blob)}"></audio>
+        <button type="button" class="btn danger small" data-del-media="${m.id}">🗑 Aufnahme löschen</button>
+      </div>`).join("");
+  }
+  $$("[data-del-media]", $("#dlg-form")).forEach(b => b.addEventListener("click", () => deleteMediaInForm(b.dataset.delMedia)));
+}
+
+/** Medium im Formular entfernen (nach Bestätigung). */
+async function deleteMediaInForm(id) {
+  if (!(await confirmDelete("Dieses Medium wird beim Speichern endgültig gelöscht."))) return;
+  const idx = formState.newMedia.findIndex(m => m.id === id);
+  if (idx >= 0) formState.newMedia.splice(idx, 1);
+  else formState.removedMedia.push(id);
+  renderMediaPreview();
+}
+
+/** Fügt gewählte Bilddateien hinzu. */
+function addPhotoFiles(files) {
+  for (const f of files) {
+    if (!f.type.startsWith("image/")) { toast(`„${f.name}“ ist kein Bild und wurde übersprungen.`, true); continue; }
+    formState.newMedia.push({ id: uid("foto"), type: "photo", blob: f, mime: f.type, name: f.name || "foto.jpg" });
+  }
+  renderMediaPreview();
+}
+
+/* ---------- K. Audio-Aufnahme ---------- */
+let recChunks = [];
+let recStream = null;
+let recTimerId = null;
+let recSeconds = 0;
+let recLast = null;       // letzte, noch nicht gespeicherte Aufnahme {blob, mime}
+
+function setRecStatus(text, live) {
+  const s = $("#rec-status");
+  if (!s) return;
+  s.innerHTML = live ? `<span class="rec-dot"></span>${esc(text)}` : esc(text);
+  s.classList.toggle("live", !!live);
+}
+function setRecButtons(state) {   // state: idle | recording | ready
+  const set = (id, dis) => { const b = $(id); if (b) b.disabled = dis; };
+  set("#btn-rec-start", state === "recording");
+  set("#btn-rec-stop", state !== "recording");
+  set("#btn-rec-play", state !== "ready");
+  set("#btn-rec-del", state !== "ready");
+}
+
+/** Verständliche Fehlermeldung je nach Fehlerart. */
+function micErrorMessage(err) {
+  const n = err && err.name;
+  if (n === "NotAllowedError" || n === "SecurityError") return "Der Mikrofonzugriff wurde abgelehnt oder ist hier blockiert. Du kannst die App trotzdem ohne Audio nutzen. Erlaube das Mikrofon in den Browser-Einstellungen (Aufnahme funktioniert nur über HTTPS oder localhost).";
+  if (n === "NotFoundError" || n === "OverconstrainedError") return "Es wurde kein Mikrofon gefunden. Bitte schließe eines an oder nutze die App ohne Audio.";
+  if (n === "NotReadableError") return "Das Mikrofon wird gerade von einer anderen App benutzt.";
+  return "Die Aufnahme konnte nicht gestartet werden: " + ((err && err.message) || "unbekannter Fehler");
+}
+
+async function startRecording() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || typeof MediaRecorder === "undefined") {
+    toast("Dieser Browser unterstützt keine Audioaufnahme (oder die Seite läuft nicht über HTTPS/localhost). Die App funktioniert auch ohne.", true);
+    return;
+  }
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  } catch (err) {
+    toast(micErrorMessage(err), true);
+    setRecStatus("Keine Aufnahme möglich", false);
+    return;
+  }
+  try {
+    recChunks = [];
+    const rec = new MediaRecorder(recStream);
+    formState.recorder = rec;
+    rec.ondataavailable = e => { if (e.data && e.data.size) recChunks.push(e.data); };
+    rec.onstop = () => {
+      const mime = rec.mimeType || "audio/webm";
+      recLast = { blob: new Blob(recChunks, { type: mime }), mime };
+      const prev = $("#rec-preview");
+      if (prev) prev.innerHTML = `<audio controls src="${makeUrl(recLast.blob)}"></audio>`;
+      setRecButtons("ready");
+      setRecStatus("Aufnahme beendet – zum Speichern des Eintrags unten auf „Speichern“ tippen", false);
+    };
+    rec.start();
+    recSeconds = 0;
+    $("#rec-timer").textContent = "00:00";
+    recTimerId = setInterval(() => { recSeconds++; const t = $("#rec-timer"); if (t) t.textContent = formatTimer(recSeconds); }, 1000);
+    setRecStatus("Aufnahme läuft …", true);
+    setRecButtons("recording");
+  } catch (err) {
+    console.error(err);
+    toast("Die Aufnahme konnte nicht gestartet werden: " + err.message, true);
+    stopRecordingCleanup();
+  }
+}
+
+/** Stoppt die Aufnahme und wartet, bis die Daten da sind. */
+function stopRecording() {
+  return new Promise(resolve => {
+    const rec = formState && formState.recorder;
+    if (!rec || rec.state !== "recording") { resolve(); return; }
+    const prevStop = rec.onstop;
+    rec.onstop = (e) => { prevStop(e); commitRecording(); resolve(); };
+    rec.stop();
+    clearInterval(recTimerId);
+    if (recStream) recStream.getTracks().forEach(t => t.stop());
+  });
+}
+
+/** Übernimmt die fertige Aufnahme in die Liste der neuen Medien. */
+function commitRecording() {
+  if (!recLast || !formState) return;
+  const ext = recLast.mime.includes("mp4") ? "m4a" : recLast.mime.includes("ogg") ? "ogg" : "webm";
+  formState.newMedia.push({ id: uid("audio"), type: "audio", blob: recLast.blob, mime: recLast.mime, name: "aufnahme." + ext });
+  recLast = null;
+  const prev = $("#rec-preview"); if (prev) prev.innerHTML = "";
+  setRecButtons("idle");
+  setRecStatus("Aufnahme übernommen ✔", false);
+  renderMediaPreview();
+}
+
+/** Gibt Mikrofon und Timer frei (z. B. beim Schließen des Dialogs). */
+function stopRecordingCleanup() {
+  clearInterval(recTimerId);
+  try { if (formState && formState.recorder && formState.recorder.state === "recording") { formState.recorder.onstop = null; formState.recorder.stop(); } } catch (e) {}
+  if (recStream) { recStream.getTracks().forEach(t => t.stop()); recStream = null; }
+  recChunks = []; recLast = null;
+}
+
+/** Bindet alle Buttons des Medienbereichs. */
+function bindMediaEvents() {
+  $("#btn-photo-cam").addEventListener("click", () => $("#file-photo-cam").click());
+  $("#btn-photo-gal").addEventListener("click", () => $("#file-photo-gal").click());
+  $("#file-photo-cam").addEventListener("change", e => { addPhotoFiles(e.target.files); e.target.value = ""; });
+  $("#file-photo-gal").addEventListener("change", e => { addPhotoFiles(e.target.files); e.target.value = ""; });
+
+  $("#btn-rec-start").addEventListener("click", startRecording);
+  $("#btn-rec-stop").addEventListener("click", async () => {
+    const rec = formState.recorder;
+    if (rec && rec.state === "recording") {
+      clearInterval(recTimerId);
+      if (recStream) recStream.getTracks().forEach(t => t.stop());
+      rec.stop();                      // onstop zeigt die Vorschau (Anhören)
+    }
+  });
+  $("#btn-rec-play").addEventListener("click", () => {
+    const a = $("#rec-preview audio");
+    if (a) a.play().catch(() => toast("Wiedergabe nicht möglich.", true));
+  });
+  $("#btn-rec-del").addEventListener("click", async () => {
+    if (!(await confirmDelete("Diese noch nicht übernommene Aufnahme wird verworfen."))) return;
+    recLast = null; recChunks = [];
+    $("#rec-preview").innerHTML = "";
+    $("#rec-timer").textContent = "00:00";
+    setRecButtons("idle"); setRecStatus("Bereit", false);
+  });
+  setRecButtons("idle");
+}
+
+/* ---------- L. Renderer ---------- */
+/** Gemeinsame Aktionsleiste einer Karte. */
+function actionsHtml(col, id, fav) {
+  return `<div class="card-actions">
+    <button class="btn small ghost" type="button" data-act="fav" data-col="${col}" data-id="${id}" aria-pressed="${!!fav}">${fav ? "⭐ Favorit" : "☆ Favorit"}</button>
+    <button class="btn small jade" type="button" data-act="edit" data-col="${col}" data-id="${id}">✏️ Bearbeiten</button>
+    <button class="btn small danger" type="button" data-act="del" data-col="${col}" data-id="${id}">🗑 Löschen</button>
+  </div>`;
+}
+function fieldBlock(label, value, zh) {
+  if (!value) return "";
+  return `<div class="field-block"><b>${esc(label)}</b><span${zh ? ' class="zh" lang="zh-Hant"' : ""}>${escMultiline(value)}</span></div>`;
+}
+function emptyHtml(msg) { return `<p class="empty">${esc(msg)}</p>`; }
+
+function cardDiary(d) {
+  return `<article class="card${d.fav ? " fav" : ""}" data-card="${d.id}">
+    <div class="meta">${formatDate(d.date)} · ${esc(d.mood)}</div>
+    <h3>${esc(d.title)}</h3>
+    ${fieldBlock("Text", d.text)}
+    ${fieldBlock("Etwas Unerwartetes", d.unexpected)}
+    ${fieldBlock("Mein Highlight", d.highlight)}
+    ${fieldBlock("Neue Beobachtung", d.observation)}
+    <div class="media-slot" data-media-for="${d.id}"></div>
+    ${actionsHtml("diary", d.id, d.fav)}
+  </article>`;
+}
+function cardCollect(c) {
+  return `<article class="card${c.fav ? " fav" : ""}">
+    <span class="chip">${esc(c.category)}</span><span class="meta">${formatDate(c.date)}</span>
+    <h3>${esc(c.title)}</h3>
+    ${fieldBlock("Beschreibung", c.text)}
+    ${actionsHtml("collect", c.id, c.fav)}
+  </article>`;
+}
+function cardPersp(p) {
+  return `<article class="card${p.fav ? " fav" : ""}">
+    <div class="meta">${formatDate(p.date)}</div>
+    ${fieldBlock("1. Was habe ich beobachtet?", p.observed)}
+    ${fieldBlock("2. Welche Erklärung könnte es dafür geben?", p.explanation)}
+    ${fieldBlock("3. Welche Annahme von mir wurde hinterfragt?", p.assumption)}
+    ${actionsHtml("persp", p.id, p.fav)}
+  </article>`;
+}
+function cardChallenge(c) {
+  return `<article class="card${c.fav ? " fav" : ""}">
+    <span class="chip ${c.done ? "" : "coral"}">${c.done ? "✔ Erledigt" + (c.doneDate ? " am " + formatDate(c.doneDate) : "") : "Offen"}</span>
+    <h3>${esc(c.text)}</h3>
+    ${fieldBlock("Notiz", c.note)}
+    <div class="card-actions">
+      <button class="btn small ${c.done ? "ghost" : "jade"}" type="button" data-act="toggle-done" data-col="challenges" data-id="${c.id}">${c.done ? "↩ Wieder öffnen" : "✔ Erledigt"}</button>
+    </div>
+    ${actionsHtml("challenges", c.id, c.fav)}
+  </article>`;
+}
+function cardWord(w) {
+  return `<article class="card${w.fav ? " fav" : ""}">
+    <div class="big-zh zh" lang="zh-Hant">${esc(w.zh)}</div>
+    <div><b>${esc(w.pinyin)}</b> – ${esc(w.de)}</div>
+    ${fieldBlock("Persönliche Erklärung", w.explanation)}
+    ${fieldBlock("Situation", w.situation)}
+    ${fieldBlock("Eigene Notiz", w.note)}
+    ${actionsHtml("words", w.id, w.fav)}
+  </article>`;
+}
+function cardStarter(s) {
+  return `<article class="card${s.fav ? " fav" : ""}">
+    <span class="chip">${esc(s.category)}</span>
+    <h3>${esc(s.de)}</h3>
+    <div class="field-block"><b>English</b>${esc(s.en)}</div>
+    <div class="field-block"><b>繁體中文</b><span class="zh big-zh" lang="zh-Hant" style="font-size:1.2rem">${esc(s.zh)}</span></div>
+    <div class="field-block"><b>Pinyin</b>${esc(s.pinyin)}</div>
+    <div class="card-actions">
+      <button class="btn small coral" type="button" data-act="use-starter" data-id="${s.id}">💬 Im Interview nutzen</button>
+    </div>
+    ${actionsHtml("starters", s.id, s.fav)}
+  </article>`;
+}
+function cardInterview(i) {
+  return `<article class="card${i.fav ? " fav" : ""}">
+    <div class="meta">${formatDate(i.date)}${i.person ? " · " + esc(i.person) : ""}</div>
+    <h3>${esc(i.question)}</h3>
+    ${fieldBlock("Meine Antwort", i.mine)}
+    ${fieldBlock("Antwort der anderen Person", i.theirs)}
+    ${actionsHtml("interviews", i.id, i.fav)}
+  </article>`;
+}
+
+/** Zeichnet eine Liste in einen Container. */
+function renderList(sel, items, cardFn, emptyMsg) {
+  const el = $(sel);
+  if (!el) return;
+  el.innerHTML = items.length ? items.map(cardFn).join("") : emptyHtml(filtersActive() ? "Keine Treffer für die aktuelle Suche/Filter." : emptyMsg);
+}
+
+/** Lädt Fotos/Audio zu den Tagebuch-Karten nachträglich (asynchron). */
+async function fillMediaSlots() {
+  const slots = $$("[data-media-for]");
+  for (const slot of slots) {
+    try {
+      const list = await dbGetMediaByEntry(slot.dataset.mediaFor);
+      slot.innerHTML =
+        `<div class="photo-grid">${list.filter(m => m.type === "photo").map(m => `<div class="photo-item"><img src="${makeUrl(m.blob)}" alt="Foto zum Eintrag"></div>`).join("")}</div>` +
+        list.filter(m => m.type === "audio").map(m => `<audio controls src="${makeUrl(m.blob)}"></audio>`).join("");
+    } catch (e) { slot.innerHTML = ""; }
+  }
+}
+
+/** Wochenrückblick: alle Einträge der letzten 7 Tage. */
+function renderWeek() {
+  const within = x => daysAgo(x.date || (x.created ? new Date(x.created).toISOString().slice(0, 10) : "")) <= 6;
+  const parts = [];
+  DATA.diary.filter(within).forEach(d => parts.push({ date: d.date, html: cardDiary(d) }));
+  DATA.collect.filter(within).forEach(c => parts.push({ date: c.date, html: cardCollect(c) }));
+  parts.sort((a, b) => (b.date || "").localeCompare(a.date || ""));
+  const el = $("#list-week");
+  el.innerHTML = parts.length ? parts.map(p => p.html).join("") : emptyHtml("In den letzten 7 Tagen gibt es noch keine Einträge.");
+}
+
+/** Challenge-Fortschritt. */
+function renderChallengeProgress() {
+  const total = DATA.challenges.length;
+  const done = DATA.challenges.filter(c => c.done).length;
+  const pct = total ? Math.round(done / total * 100) : 0;
+  const bar = $("#challenge-progress");
+  bar.setAttribute("aria-valuenow", pct);
+  $("div", bar).style.width = pct + "%";
+  $("#challenge-progress-text").textContent = `${done} von ${total} Challenges erledigt (${pct} %)`;
+}
+
+/** Globale Suchergebnisse über alle Sammlungen. */
+function renderSearch() {
+  const out = [];
+  const add = (list, area, catFn, fn) => applyFilters(list, area, catFn).forEach(x => out.push(fn(x)));
+  add(DATA.diary, "erleben", () => "", cardDiary);
+  add(DATA.collect, "erleben", c => c.category, cardCollect);
+  add(DATA.persp, "verstehen", () => "", cardPersp);
+  add(DATA.challenges, "verstehen", c => c.done ? "Challenge erledigt" : "Challenge offen", cardChallenge);
+  add(DATA.words, "verstehen", () => "", cardWord);
+  add(DATA.starters, "begegnen", s => s.category, cardStarter);
+  add(DATA.interviews, "begegnen", () => "", cardInterview);
+  $("#list-search").innerHTML = out.length
+    ? `<p class="meta">${out.length} Treffer</p>` + out.join("")
+    : emptyHtml("Keine Treffer gefunden.");
+}
+
+/** Startseite: zufällige Anregung. */
+function renderSuggestion() {
+  const open = DATA.challenges.filter(c => !c.done);
+  const ch = randomItem(open.map(c => c.text).concat(CHALLENGE_POOL));
+  $("#start-suggestion").innerHTML = `<p><b>${esc(ch || "Entdecke heute etwas Neues!")}</b></p>`;
+}
+
+/** Zeichnet alles neu. Wird nach jeder Änderung aufgerufen. */
+function renderAll() {
+  revokeAllUrls();
+  const searching = filtersActive();
+  // Bei aktiver Suche/Filter automatisch die Ergebnisansicht zeigen
+  if (searching && !["suche", "daten"].includes(currentView) && FILTER.query.trim()) {
+    $$(".view").forEach(v => v.classList.toggle("active", v.id === "view-suche"));
+  }
+  renderList("#list-diary", applyFilters(DATA.diary, "erleben"), cardDiary, "Noch keine Tagebuch-Einträge. Starte mit dem Button oben!");
+  renderList("#list-collect", applyFilters(DATA.collect, "erleben", c => c.category), cardCollect, "Noch keine Sammelkarten.");
+  renderWeek();
+  renderList("#list-persp", applyFilters(DATA.persp, "verstehen"), cardPersp, "Noch keine Perspektivwechsel-Notizen.");
+  renderList("#list-challenges", applyFilters(DATA.challenges, "verstehen", c => c.done ? "Challenge erledigt" : "Challenge offen"), cardChallenge, "Noch keine Challenges.");
+  renderChallengeProgress();
+  renderList("#list-words", applyFilters(DATA.words, "verstehen"), cardWord, "Noch keine Wörter gesammelt.");
+  renderList("#list-starters", applyFilters(DATA.starters, "begegnen", s => s.category), cardStarter, "Noch keine Gesprächs-Starter.");
+  renderList("#list-interviews", applyFilters(DATA.interviews, "begegnen"), cardInterview, "Noch keine Interviews.");
+  renderSearch();
+  renderSuggestion();
+  if (typeof renderStats === "function") renderStats();   // Teil 3
+  fillMediaSlots();
+}
+
+/* ---------- M. Formular-Definitionen & Aktionen ---------- */
+const FORMS = {
+  diary: () => ({
+    title: "Tagebuch-Eintrag", collection: "diary", prefix: "tb", withMedia: true,
+    fields: [
+      { name: "date", label: "Datum", type: "date", required: true, default: todayISO() },
+      { name: "mood", label: "Stimmung", type: "select", options: MOODS },
+      { name: "title", label: "Titel", type: "text", required: true },
+      { name: "text", label: "Was habe ich erlebt?", type: "textarea" },
+      { name: "unexpected", label: "Etwas Unerwartetes", type: "textarea" },
+      { name: "highlight", label: "Mein Highlight", type: "textarea" },
+      { name: "observation", label: "Neue Beobachtung", type: "textarea" }
+    ]
+  }),
+  collect: () => ({
+    title: "Sammelkarte", collection: "collect", prefix: "sk",
+    fields: [
+      { name: "category", label: "Kategorie", type: "select", options: COLLECT_TYPES },
+      { name: "date", label: "Datum", type: "date", required: true, default: todayISO() },
+      { name: "title", label: "Titel (z. B. Name des Gerichts, Ortes …)", type: "text", required: true },
+      { name: "text", label: "Beschreibung", type: "textarea" }
+    ]
+  }),
+  persp: () => ({
+    title: "Perspektivwechsel-Notiz", collection: "persp", prefix: "pw",
+    fields: [
+      { name: "date", label: "Datum", type: "date", required: true, default: todayISO() },
+      { name: "observed", label: "1. Was habe ich beobachtet?", type: "textarea", required: true },
+      { name: "explanation", label: "2. Welche Erklärung könnte es dafür geben?", type: "textarea" },
+      { name: "assumption", label: "3. Welche Annahme von mir wurde dadurch hinterfragt?", type: "textarea" }
+    ]
+  }),
+  challenges: () => ({
+    title: "Challenge", collection: "challenges", prefix: "ch", extra: { done: false, doneDate: "" },
+    fields: [
+      { name: "text", label: "Challenge", type: "textarea", required: true },
+      { name: "note", label: "Notiz", type: "textarea" }
+    ]
+  }),
+  words: () => ({
+    title: "Wort mit Geschichte", collection: "words", prefix: "wo",
+    fields: [
+      { name: "date", label: "Datum", type: "date", default: todayISO() },
+      { name: "zh", label: "Wort (traditionelles Chinesisch)", type: "text", required: true, lang: "zh-Hant", placeholder: "z. B. 緣分" },
+      { name: "pinyin", label: "Pinyin", type: "text", placeholder: "z. B. yuánfèn" },
+      { name: "de", label: "Deutsche Übersetzung", type: "text", required: true },
+      { name: "explanation", label: "Persönliche Erklärung", type: "textarea" },
+      { name: "situation", label: "Situation, in der das Wort vorkam", type: "textarea" },
+      { name: "note", label: "Eigene Notiz", type: "textarea" }
+    ]
+  }),
+  starters: () => ({
+    title: "Gesprächs-Starter", collection: "starters", prefix: "gs",
+    fields: [
+      { name: "category", label: "Kategorie", type: "select", options: STARTER_CATEGORIES },
+      { name: "de", label: "Deutsch", type: "textarea", required: true },
+      { name: "en", label: "Englisch", type: "textarea" },
+      { name: "zh", label: "Traditionelles Chinesisch", type: "textarea", lang: "zh-Hant" },
+      { name: "pinyin", label: "Pinyin", type: "textarea" }
+    ]
+  }),
+  interviews: () => ({
+    title: "Zwei-Seiten-Interview", collection: "interviews", prefix: "iv",
+    fields: [
+      { name: "date", label: "Datum", type: "date", default: todayISO() },
+      { name: "person", label: "Name oder Kürzel der anderen Person (optional)", type: "text" },
+      { name: "preset", label: "Frage aus Liste wählen (optional)", type: "select",
+        options: ["– eigene Frage –"].concat(DATA.starters.map(s => s.de).concat(STARTER_POOL.map(s => s.de))) },
+      { name: "question", label: "Frage", type: "textarea", required: true },
+      { name: "mine", label: "Meine Antwort", type: "textarea" },
+      { name: "theirs", label: "Antwort der anderen Person", type: "textarea" }
+    ],
+    // Auswahl einer Frage füllt das Fragenfeld automatisch
+    onOpen: body => {
+      const sel = body.querySelector("#f_preset");
+      const q = body.querySelector("#f_question");
+      sel.addEventListener("change", () => { if (sel.selectedIndex > 0) q.value = sel.value; });
+    },
+    // "preset" ist nur Hilfsfeld und wird nicht gespeichert
+    validate: v => { delete v.preset; return ""; }
+  })
+};
+
+/** Öffnet ein Formular für neu (item = null) oder bearbeiten. */
+function openEditor(col, item, prefill) {
+  const cfg = FORMS[col]();
+  cfg.item = item || (prefill ? Object.assign({ id: null }, prefill) : null);
+  // Vorbelegung ohne bestehenden Eintrag (z. B. Frage aus Starter)
+  if (!item && prefill) {
+    cfg.item = null;
+    const origOpen = cfg.onOpen;
+    cfg.onOpen = body => {
+      if (origOpen) origOpen(body);
+      Object.entries(prefill).forEach(([k, v]) => { const el = body.querySelector("#f_" + k); if (el) el.value = v; });
+    };
+  }
+  openForm(cfg);
+}
+
+/** Zentrale Klick-Behandlung für alle Karten-Buttons (Event-Delegation). */
+async function handleCardAction(e) {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const { act, col, id } = btn.dataset;
+
+  if (act === "use-starter") {
+    const s = DATA.starters.find(x => x.id === id);
+    if (s) { showView("begegnen"); showSubview("begegnen", "interview"); openEditor("interviews", null, { question: s.de }); }
+    return;
+  }
+  const list = DATA[col];
+  const item = list && list.find(x => x.id === id);
+  if (!item) return;
+
+  if (act === "fav") { item.fav = !item.fav; saveData(); renderAll(); }
+  else if (act === "edit") openEditor(col, item);
+  else if (act === "toggle-done") {
+    item.done = !item.done;
+    item.doneDate = item.done ? todayISO() : "";
+    saveData(); renderAll();
+    toast(item.done ? "Challenge erledigt – super! 🎉" : "Challenge wieder geöffnet.");
+  }
+  else if (act === "del") {
+    if (!(await confirmDelete("Möchtest du diesen Eintrag wirklich endgültig löschen? Zugehörige Fotos und Audioaufnahmen werden ebenfalls gelöscht."))) return;
+    await deleteMediaOfEntry(item.id);
+    DATA[col] = list.filter(x => x.id !== id);
+    saveData(); renderAll();
+    toast("Eintrag gelöscht.");
+  }
+}
+
+/* ---------- N. Zufallsfunktionen ---------- */
+function randomChallenge() {
+  const open = DATA.challenges.filter(c => !c.done).map(c => c.text);
+  const text = randomItem(open.length ? open : CHALLENGE_POOL);
+  $("#random-challenge-box").innerHTML = `<div class="notice"><b>Deine Challenge:</b><br>${esc(text)}
+    <div class="card-actions"><button class="btn small jade" type="button" id="btn-adopt-challenge">➕ In meine Liste übernehmen</button></div></div>`;
+  $("#btn-adopt-challenge").addEventListener("click", () => {
+    if (DATA.challenges.some(c => c.text === text)) { toast("Diese Challenge steht schon in deiner Liste."); return; }
+    DATA.challenges.unshift({ id: uid("ch"), text, done: false, doneDate: "", note: "", fav: false, created: Date.now() });
+    saveData(); renderAll(); toast("Challenge übernommen.");
+  });
+}
+function randomStarter() {
+  const pool = DATA.starters.map(s => ({ category: s.category, de: s.de, en: s.en, zh: s.zh, pinyin: s.pinyin, saved: true }))
+    .concat(STARTER_POOL);
+  const s = randomItem(pool);
+  $("#random-starter-box").innerHTML = `<div class="notice"><span class="chip">${esc(s.category)}</span>
+    <h3>${esc(s.de)}</h3><div>${esc(s.en)}</div>
+    <div class="zh big-zh" lang="zh-Hant" style="font-size:1.2rem">${esc(s.zh)}</div><div>${esc(s.pinyin)}</div>
+    <div class="card-actions"><button class="btn small jade" type="button" id="btn-save-random-starter">⭐ Speichern</button></div></div>`;
+  $("#btn-save-random-starter").addEventListener("click", () => {
+    if (DATA.starters.some(x => x.de === s.de)) { toast("Diese Frage ist bereits gespeichert."); return; }
+    DATA.starters.unshift({ id: uid("gs"), category: s.category, de: s.de, en: s.en, zh: s.zh, pinyin: s.pinyin, fav: true, created: Date.now() });
+    saveData(); renderAll(); toast("Frage als Favorit gespeichert.");
+  });
+}
+
+/* ---------- O. Ereignisse für Teil 2 ---------- */
+function initPart2Events() {
+  // Neue Einträge
+  $("#btn-new-diary").addEventListener("click", () => openEditor("diary"));
+  $("#btn-new-collect").addEventListener("click", () => openEditor("collect"));
+  $("#btn-new-persp").addEventListener("click", () => openEditor("persp"));
+  $("#btn-new-challenge").addEventListener("click", () => openEditor("challenges"));
+  $("#btn-new-word").addEventListener("click", () => openEditor("words"));
+  $("#btn-new-starter").addEventListener("click", () => openEditor("starters"));
+  $("#btn-new-interview").addEventListener("click", () => openEditor("interviews"));
+  $("#btn-random-challenge").addEventListener("click", randomChallenge);
+  $("#btn-random-starter").addEventListener("click", randomStarter);
+
+  // Formular absenden / schließen
+  $("#dlg-form-el").addEventListener("submit", submitForm);
+  $("#dlg-form-cancel").addEventListener("click", closeForm);
+  $("#dlg-form").addEventListener("cancel", e => { e.preventDefault(); closeForm(); });
+
+  // Aktionen in allen Listen (Event-Delegation)
+  $("#main").addEventListener("click", handleCardAction);
+
+  // Suche
+  $("#search-form").addEventListener("submit", e => e.preventDefault());
+  $("#global-search").addEventListener("input", e => {
+    FILTER.query = e.target.value;
+    if (FILTER.query.trim()) showView("suche");
+    else if (currentView === "suche") showView("start");
+    else renderAll();
+  });
+
+  // Filter
+  fillCategoryFilter();
+  $("#filter-area").addEventListener("change", e => {
+    FILTER.area = e.target.value;
+    fillCategoryFilter();
+    afterFilterChange();
+  });
+  $("#filter-category").addEventListener("change", e => { FILTER.category = e.target.value; afterFilterChange(); });
+  $("#filter-period").addEventListener("change", e => { FILTER.period = e.target.value; afterFilterChange(); });
+  $("#filter-fav").addEventListener("change", e => { FILTER.fav = e.target.checked; afterFilterChange(); });
+  $("#btn-filter-reset").addEventListener("click", () => {
+    FILTER.query = ""; FILTER.area = "alle"; FILTER.category = "alle"; FILTER.period = "alle"; FILTER.fav = false;
+    $("#global-search").value = "";
+    $("#filter-area").value = "alle";
+    $("#filter-period").value = "alle";
+    $("#filter-fav").checked = false;
+    fillCategoryFilter();
+    if (currentView === "suche") showView("start"); else renderAll();
+    toast("Filter zurückgesetzt.");
+  });
+}
+
+/**
+ * Nach einer Filteränderung: Wenn ein Filter aktiv ist, werden die
+ * Ergebnisse in der Suchansicht gezeigt, sonst wird normal neu gezeichnet.
+ */
+function afterFilterChange() {
+  if (filtersActive() && !["suche", "daten"].includes(currentView)) showView("suche");
+  else renderAll();
+}
+
+/* =========================================================
+   TEIL 3 – STATISTIK, EXPORT/IMPORT, APP-START
+   P. Statistik
+   Q. Download-Hilfen & Base64
+   R. JSON-Backup (Export & Import)
+   S. CSV-Export (je Bereich)
+   T. ZIP-Medienexport (STORE, ohne Kompression)
+   U. Einzel-Download der Medien
+   V. Alles löschen
+   W. Ereignisse & App-Start
+   ========================================================= */
+
+/* ---------- P. Statistik ---------- */
+function renderStats() {
+  const photos = DATA.mediaMeta.filter(m => m.type === "photo").length;
+  const audios = DATA.mediaMeta.filter(m => m.type === "audio").length;
+  const doneCh = DATA.challenges.filter(c => c.done).length;
+  const items = [
+    ["📔", DATA.diary.length, "Tagebuch-Einträge"],
+    ["🈶", DATA.words.length, "Gesammelte Wörter"],
+    ["✅", doneCh, "Erledigte Challenges"],
+    ["🤝", DATA.interviews.length, "Gespräche / Interviews"],
+    ["📷", photos, "Gespeicherte Fotos"],
+    ["🎙️", audios, "Audioaufnahmen"]
+  ];
+  $("#stats-grid").innerHTML = items.map(([ico, n, label]) =>
+    `<div class="stat"><div aria-hidden="true">${ico}</div><div class="num">${n}</div><div>${esc(label)}</div></div>`).join("");
+}
+
+/* ---------- Q. Download-Hilfen & Base64 ---------- */
+/** Löst einen Datei-Download im Browser aus (lokal, ohne Netzwerk). */
+function downloadBlob(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
+}
+/** Blob -> Base64 (ohne Data-URL-Präfix). */
+function blobToBase64(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result).split(",")[1] || "");
+    fr.onerror = () => reject(fr.error || new Error("Datei konnte nicht gelesen werden."));
+    fr.readAsDataURL(blob);
+  });
+}
+/** Base64 -> Blob. */
+function base64ToBlob(b64, mime) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return new Blob([bytes], { type: mime || "application/octet-stream" });
+}
+function setExportStatus(msg) { const s = $("#export-status"); if (s) s.textContent = msg; }
+function stamp() { return todayISO(); }
+
+/* ---------- R. JSON-Backup ---------- */
+async function exportJSON() {
+  try {
+    setExportStatus("Backup wird erstellt …");
+    const media = await dbGetAllMedia();
+    const mediaOut = [];
+    for (const m of media) {
+      mediaOut.push({
+        id: m.id, entryId: m.entryId, type: m.type, mime: m.mime,
+        name: m.name, date: m.date, base64: await blobToBase64(m.blob)
+      });
+    }
+    const backup = {
+      app: "Taiwan entdecken", version: 1, exportedAt: new Date().toISOString(),
+      data: DATA, settings: SETTINGS, media: mediaOut
+    };
+    downloadBlob(new Blob([JSON.stringify(backup)], { type: "application/json" }), `taiwan-entdecken-backup-${stamp()}.json`);
+    setExportStatus(`Backup erstellt (${mediaOut.length} Mediendateien).`);
+    toast("Backup exportiert ✔");
+  } catch (e) {
+    console.error(e);
+    setExportStatus("");
+    toast("Das Backup konnte nicht erstellt werden: " + (e.message || "unbekannter Fehler") + ". Bei sehr vielen Medien hilft der ZIP-Export.", true);
+  }
+}
+
+async function importJSON(file) {
+  if (!file) return;
+  let backup;
+  try {
+    backup = JSON.parse(await file.text());
+  } catch (e) {
+    toast("Die Datei ist kein gültiges JSON-Backup.", true);
+    return;
+  }
+  if (!backup || backup.app !== "Taiwan entdecken" || !backup.data) {
+    toast("Diese Datei stammt nicht aus „Taiwan entdecken“.", true);
+    return;
+  }
+  if (!(await confirmDelete("Der Import ersetzt alle aktuell gespeicherten Daten, Fotos und Audioaufnahmen durch das Backup. Fortfahren?"))) return;
+  try {
+    setExportStatus("Import läuft …");
+    await dbClearMedia();
+    DATA = Object.assign(emptyData(), backup.data);
+    DATA.mediaMeta = [];
+    SETTINGS = Object.assign({ theme: "light", seeded: true }, backup.settings || {});
+    SETTINGS.seeded = true;   // Beispieldaten sollen nach Import nie neu erscheinen
+    for (const m of (backup.media || [])) {
+      const rec = { id: m.id, entryId: m.entryId, type: m.type, mime: m.mime, name: m.name, date: m.date, blob: base64ToBlob(m.base64, m.mime) };
+      await dbPutMedia(rec);
+      addMediaMeta(rec);
+    }
+    if (!saveData()) return;
+    saveSettings();
+    applyTheme();
+    fillCategoryFilter();
+    renderAll();
+    setExportStatus(`Import abgeschlossen (${(backup.media || []).length} Mediendateien).`);
+    toast("Backup importiert ✔");
+  } catch (e) {
+    console.error(e);
+    setExportStatus("");
+    toast("Der Import ist fehlgeschlagen: " + (e.message || "unbekannter Fehler"), true);
+  }
+}
+
+/* ---------- S. CSV-Export ---------- */
+/** CSV-Zelle korrekt maskieren (Semikolon-getrennt, für deutsches Excel). */
+function csvCell(v) {
+  const s = String(v ?? "");
+  // Schutz vor Formel-Injection in Tabellenprogrammen
+  const safe = /^[=+\-@]/.test(s) ? "'" + s : s;
+  return '"' + safe.replace(/"/g, '""') + '"';
+}
+function toCSV(headers, rows) {
+  const lines = [headers.map(csvCell).join(";")];
+  rows.forEach(r => lines.push(r.map(csvCell).join(";")));
+  return "\uFEFF" + lines.join("\r\n");   // BOM: Umlaute & Chinesisch korrekt in Excel
+}
+
+/** Definition der CSV-Dateien je Bereich. */
+const CSV_SETS = [
+  { file: "erleben_tagebuch", col: "diary",
+    head: ["ID", "Datum", "Stimmung", "Titel", "Text", "Etwas Unerwartetes", "Mein Highlight", "Neue Beobachtung", "Favorit"],
+    row: d => [d.id, d.date, d.mood, d.title, d.text, d.unexpected, d.highlight, d.observation, d.fav ? "ja" : "nein"] },
+  { file: "erleben_sammelkarten", col: "collect",
+    head: ["ID", "Datum", "Kategorie", "Titel", "Beschreibung", "Favorit"],
+    row: c => [c.id, c.date, c.category, c.title, c.text, c.fav ? "ja" : "nein"] },
+  { file: "verstehen_perspektivwechsel", col: "persp",
+    head: ["ID", "Datum", "Beobachtet", "Erklärung", "Hinterfragte Annahme", "Favorit"],
+    row: p => [p.id, p.date, p.observed, p.explanation, p.assumption, p.fav ? "ja" : "nein"] },
+  { file: "verstehen_challenges", col: "challenges",
+    head: ["ID", "Challenge", "Erledigt", "Erledigt am", "Notiz", "Favorit"],
+    row: c => [c.id, c.text, c.done ? "ja" : "nein", c.doneDate, c.note, c.fav ? "ja" : "nein"] },
+  { file: "verstehen_woerter", col: "words",
+    head: ["ID", "Datum", "Chinesisch (traditionell)", "Pinyin", "Deutsch", "Persönliche Erklärung", "Situation", "Notiz", "Favorit"],
+    row: w => [w.id, w.date, w.zh, w.pinyin, w.de, w.explanation, w.situation, w.note, w.fav ? "ja" : "nein"] },
+  { file: "begegnen_gespraechsstarter", col: "starters",
+    head: ["ID", "Kategorie", "Deutsch", "Englisch", "Chinesisch (traditionell)", "Pinyin", "Favorit"],
+    row: s => [s.id, s.category, s.de, s.en, s.zh, s.pinyin, s.fav ? "ja" : "nein"] },
+  { file: "begegnen_interviews", col: "interviews",
+    head: ["ID", "Datum", "Person", "Frage", "Meine Antwort", "Antwort der anderen Person", "Favorit"],
+    row: i => [i.id, i.date, i.person, i.question, i.mine, i.theirs, i.fav ? "ja" : "nein"] }
+];
+
+/** Erzeugt alle CSV-Dateien als {name, blob}-Liste. */
+function buildCsvFiles() {
+  return CSV_SETS.map(s => ({
+    name: `${s.file}.csv`,
+    blob: new Blob([toCSV(s.head, DATA[s.col].map(s.row))], { type: "text/csv;charset=utf-8" })
+  }));
+}
+
+async function exportText() {
+  try {
+    const files = buildCsvFiles();
+    // Mehrere Downloads nacheinander (mit kleiner Pause, damit Browser sie zulassen)
+    for (const f of files) { downloadBlob(f.blob, `${stamp()}_${f.name}`); await new Promise(r => setTimeout(r, 350)); }
+    setExportStatus(`${files.length} CSV-Dateien exportiert (je Bereich eine Datei).`);
+    toast("Textdaten als CSV exportiert ✔");
+  } catch (e) {
+    console.error(e);
+    toast("Der Export der Textdaten ist fehlgeschlagen: " + e.message + ". Falls dein Browser mehrere Downloads blockiert, erlaube sie bitte für diese Seite.", true);
+  }
+}
+
+/* ---------- T. ZIP-Medienexport ---------- */
+/** CRC-32-Tabelle für die ZIP-Prüfsummen. */
+const CRC_TABLE = (() => {
+  const t = new Uint32Array(256);
+  for (let n = 0; n < 256; n++) {
+    let c = n;
+    for (let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1;
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  let c = 0xFFFFFFFF;
+  for (let i = 0; i < bytes.length; i++) c = CRC_TABLE[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+/** DOS-Datum/Zeit für ZIP-Header. */
+function dosDateTime(d = new Date()) {
+  const time = (d.getHours() << 11) | (d.getMinutes() << 5) | Math.floor(d.getSeconds() / 2);
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  return { time, date };
+}
+
+/**
+ * Baut ein gültiges ZIP (Methode "STORE", keine Kompression).
+ * Fotos/Audio sind ohnehin komprimiert, daher kein Nachteil.
+ * @param {Array<{name:string, data:Uint8Array}>} files
+ */
+function buildZip(files) {
+  const enc = new TextEncoder();
+  const { time, date } = dosDateTime();
+  const parts = [];       // lokale Header + Daten
+  const central = [];     // zentrale Verzeichniseinträge
+  let offset = 0;
+
+  for (const f of files) {
+    const nameBytes = enc.encode(f.name);
+    const crc = crc32(f.data);
+    const size = f.data.length;
+
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true);   // Signatur lokaler Header
+    lh.setUint16(4, 20, true);           // Version
+    lh.setUint16(6, 0x0800, true);       // Flag: UTF-8-Dateinamen
+    lh.setUint16(8, 0, true);            // Methode 0 = STORE
+    lh.setUint16(10, time, true);
+    lh.setUint16(12, date, true);
+    lh.setUint32(14, crc, true);
+    lh.setUint32(18, size, true);
+    lh.setUint32(22, size, true);
+    lh.setUint16(26, nameBytes.length, true);
+    lh.setUint16(28, 0, true);
+    parts.push(new Uint8Array(lh.buffer), nameBytes, f.data);
+
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true);   // Signatur zentrales Verzeichnis
+    ch.setUint16(4, 20, true);
+    ch.setUint16(6, 20, true);
+    ch.setUint16(8, 0x0800, true);
+    ch.setUint16(10, 0, true);
+    ch.setUint16(12, time, true);
+    ch.setUint16(14, date, true);
+    ch.setUint32(16, crc, true);
+    ch.setUint32(20, size, true);
+    ch.setUint32(24, size, true);
+    ch.setUint16(28, nameBytes.length, true);
+    ch.setUint32(42, offset, true);
+    central.push(new Uint8Array(ch.buffer), nameBytes);
+
+    offset += 30 + nameBytes.length + size;
+  }
+  const centralSize = central.reduce((s, p) => s + p.length, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true);
+  end.setUint16(8, files.length, true);
+  end.setUint16(10, files.length, true);
+  end.setUint32(12, centralSize, true);
+  end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, new Uint8Array(end.buffer)], { type: "application/zip" });
+}
+
+/** Dateiendung aus MIME-Typ ableiten. */
+function extFromMime(mime, type) {
+  if (!mime) return type === "audio" ? "webm" : "jpg";
+  if (mime.includes("jpeg")) return "jpg";
+  if (mime.includes("png")) return "png";
+  if (mime.includes("webp")) return "webp";
+  if (mime.includes("heic")) return "heic";
+  if (mime.includes("gif")) return "gif";
+  if (mime.includes("mp4") || mime.includes("m4a") || mime.includes("aac")) return "m4a";
+  if (mime.includes("ogg")) return "ogg";
+  if (mime.includes("mpeg")) return "mp3";
+  if (mime.includes("wav")) return "wav";
+  return type === "audio" ? "webm" : "bin";
+}
+
+async function exportMediaZip() {
+  try {
+    const media = await dbGetAllMedia();
+    if (!media.length) { toast("Es sind noch keine Fotos oder Audioaufnahmen gespeichert."); return; }
+    setExportStatus("ZIP wird erstellt …");
+    const files = [];
+    const rows = [];
+    let n = 0;
+    for (const m of media) {
+      n++;
+      const fname = `${m.type === "photo" ? "foto" : "audio"}_${String(n).padStart(3, "0")}.${extFromMime(m.mime, m.type)}`;
+      const data = new Uint8Array(await m.blob.arrayBuffer());
+      files.push({ name: fname, data });
+      rows.push([m.id, fname, m.type === "photo" ? "Foto" : "Audio", m.date, m.entryId]);
+    }
+    const csv = toCSV(["Medien-ID", "Dateiname", "Typ", "Datum", "Eintrags-ID"], rows);
+    files.push({ name: "medien.csv", data: new TextEncoder().encode(csv) });
+    downloadBlob(buildZip(files), `taiwan-entdecken-medien-${stamp()}.zip`);
+    setExportStatus(`ZIP erstellt: ${media.length} Mediendateien plus medien.csv.`);
+    toast("Medien-ZIP exportiert ✔");
+  } catch (e) {
+    console.error(e);
+    setExportStatus("");
+    toast("Der ZIP-Export ist fehlgeschlagen (vermutlich zu wenig Arbeitsspeicher): " + e.message + ". Nutze stattdessen „Medien einzeln herunterladen“.", true);
+  }
+}
+
+/* ---------- U. Einzel-Download der Medien (Notlösung) ---------- */
+async function exportMediaSingle() {
+  try {
+    const media = await dbGetAllMedia();
+    if (!media.length) { toast("Es sind noch keine Medien gespeichert."); return; }
+    let n = 0;
+    for (const m of media) {
+      n++;
+      downloadBlob(m.blob, `${m.type === "photo" ? "foto" : "audio"}_${String(n).padStart(3, "0")}.${extFromMime(m.mime, m.type)}`);
+      await new Promise(r => setTimeout(r, 400));
+    }
+    setExportStatus(`${media.length} Dateien einzeln heruntergeladen. Erlaube bei Nachfrage mehrere Downloads.`);
+  } catch (e) {
+    console.error(e);
+    toast("Der Einzel-Download ist fehlgeschlagen: " + e.message, true);
+  }
+}
+
+/* ---------- V. Alles löschen ---------- */
+async function resetAll() {
+  if (!(await confirmDelete("Wirklich ALLE Einträge, Fotos und Audioaufnahmen löschen? Exportiere vorher ein Backup, wenn du die Daten behalten möchtest."))) return;
+  try {
+    await dbClearMedia();
+    DATA = emptyData();
+    SETTINGS.seeded = true;   // Beispieldaten kommen nicht zurück
+    saveData(); saveSettings();
+    renderAll();
+    toast("Alle Daten wurden gelöscht.");
+  } catch (e) {
+    console.error(e);
+    toast("Löschen fehlgeschlagen: " + e.message, true);
+  }
+}
+
+/* ---------- W. Ereignisse & App-Start ---------- */
+function initPart3Events() {
+  $("#btn-export-json").addEventListener("click", exportJSON);
+  $("#btn-import-json").addEventListener("click", () => $("#file-import-json").click());
+  $("#file-import-json").addEventListener("change", e => { importJSON(e.target.files[0]); e.target.value = ""; });
+  $("#btn-export-text").addEventListener("click", exportText);
+  $("#btn-export-media").addEventListener("click", exportMediaZip);
+  $("#btn-export-media-single").addEventListener("click", exportMediaSingle);
+  $("#btn-reset-all").addEventListener("click", resetAll);
+}
+
+/** Startpunkt der App. */
+async function initApp() {
+  loadAll();                 // localStorage lesen
+  seedExampleData();         // nur beim allerersten Start
+  applyTheme();
+  initCoreEvents();          // Teil 1
+  initPart2Events();         // Teil 2
+  initPart3Events();         // Teil 3
+  try { await openDB(); }
+  catch (e) { toast("Fotos und Audio können in diesem Browser nicht gespeichert werden (" + e.message + "). Alles andere funktioniert weiterhin.", true); }
+  renderAll();
+}
+
+// Fehler nie stumm verschlucken, sondern verständlich melden
+window.addEventListener("unhandledrejection", e => {
+  console.error(e.reason);
+  toast("Ein unerwarteter Fehler ist aufgetreten. Deine Daten sind sicher; bitte versuche es erneut.", true);
+});
+
+document.addEventListener("DOMContentLoaded", initApp);
+</script>
+</body>
+</html>
