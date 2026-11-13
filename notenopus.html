@@ -434,4 +434,222 @@ function renderStudentHead(){
 function renderStudents(){
   renderStudentHead();
   $('stuTable').tBodies[0].innerHTML = state.students.map((s,i)=>{
-    const crit = state.critOn ? state.criteria.map((c,j)=>`<td class="c"><input class="small" data-s="${i}
+    const crit = state.critOn ? state.criteria.map((c,j)=>`<td class="c"><input class="small" data-s="${i}" data-f="crit" data-j="${j}" value="${esc(s.crit?.[j]??'')}"></td>`).join('') : '';
+    const pts = state.critOn ? `<td class="c" id="sp${i}"></td>` : `<td class="c"><input class="num" data-s="${i}" data-f="points" value="${esc(s.points??'')}"></td>`;
+    return `<tr id="sr${i}"><td class="c">${i+1}</td><td><input data-s="${i}" data-f="name" value="${esc(s.name)}" style="width:170px"></td>${crit}${pts}
+      <td class="c" id="spc${i}"></td><td class="c"><b id="sg${i}"></b></td>
+      <td><textarea rows="1" data-s="${i}" data-f="comment">${esc(s.comment||'')}</textarea></td>
+      <td class="c noprint"><button class="del" onclick="delStudent(${i})">×</button></td></tr>`;
+  }).join('') || `<tr><td colspan="9" class="hint">Noch keine Einträge. Füge mit „+ Schüler/in“ Schüler hinzu.</td></tr>`;
+}
+function updateStudentRow(i){
+  const s=state.students[i], pc=studentPct(s), pts=studentPts(s), l=levelFor(pts);
+  if(state.critOn && $('sp'+i)) $('sp'+i).textContent=fmt(pts);
+  $('spc'+i).textContent = isFinite(pc)?fmt(pc,1)+' %':'–';
+  $('sg'+i).textContent = l ? l.label + (state.key.scale!=='grade'?` (${fmt(l.val)} NP)`:'') : '–';
+  $('sr'+i).classList.toggle('fail', !!(l && !l.pass));
+}
+$('stuTable').addEventListener('input',e=>{
+  const t=e.target,i=t.dataset.s,f=t.dataset.f; if(i===undefined) return;
+  const s=state.students[i];
+  if(f==='crit'){ s.crit=s.crit||[]; s.crit[t.dataset.j]=t.value; }
+  else s[f]=t.value;
+  if(f!=='comment'&&f!=='name') updateStudentRow(i);
+  renderStats(); renderWord(); save();
+});
+function addStudent(name=''){ state.students.push({name,points:'',crit:[],comment:''}); renderAll(); 
+  const inp=document.querySelector(`#sr${state.students.length-1} input`); if(inp&&!name) inp.focus(); }
+function addStudents(){
+  const t=prompt('Namen eingeben (durch Komma oder Semikolon getrennt):'); if(!t) return;
+  t.split(/[;,\n]/).map(x=>x.trim()).filter(Boolean).forEach(n=>state.students.push({name:n,points:'',crit:[],comment:''}));
+  renderAll();
+}
+function delStudent(i){ if(!confirm(`„${state.students[i].name||'Eintrag '+(i+1)}“ entfernen?`)) return; state.students.splice(i,1); renderAll(); }
+function sortStudents(){ state.students.sort((a,b)=>a.name.localeCompare(b.name,'de')); renderAll(); }
+
+/* ---------- Stats ---------- */
+function computeStats(){
+  const rows = state.students.map(s=>({pts:studentPts(s),pc:studentPct(s)})).filter(r=>isFinite(r.pts));
+  const n=rows.length; if(!n) return null;
+  const ls=rows.map(r=>levelFor(r.pts));
+  const pts=rows.map(r=>r.pts).sort((a,b)=>a-b);
+  const avg=pts.reduce((a,b)=>a+b,0)/n;
+  const med = n%2 ? pts[(n-1)/2] : (pts[n/2-1]+pts[n/2])/2;
+  const avgVal = ls.reduce((a,l)=>a+l.val,0)/n;
+  const pass = ls.filter(l=>l.pass).length;
+  const dist = sortedLevels().map(l=>({label:l.label,count:ls.filter(x=>x===l).length,pass:l.pass}));
+  return {n,avg,med,min:pts[0],max:pts[n-1],avgVal,pass,dist,avgLevel:levelFor(avg),medLevel:levelFor(med)};
+}
+function renderStats(){
+  const st=computeStats();
+  if(!st){ $('stats').innerHTML='<div class="hint">Noch keine Punkte eingetragen.</div>'; $('spiegel').innerHTML=''; return; }
+  const np=state.key.scale!=='grade';
+  const avgNote = np ? `${fmt(st.avgVal,2)} NP` : fmt(st.avgVal,2);
+  $('stats').innerHTML = [
+    ['Bewertet', st.n],
+    ['Ø Punkte', `${fmt(st.avg)} (${fmt(st.avg/state.max*100,1)} %)`],
+    ['Ø Note', `${avgNote}<span class="hint" style="display:block;font-weight:400">Note des Ø-Punktwerts: ${esc(st.avgLevel.label)}</span>`],
+    ['Median', `${fmt(st.med)} P. (${esc(st.medLevel.label)})`],
+    ['Min / Max', `${fmt(st.min)} / ${fmt(st.max)}`],
+    ['Bestehensquote', `${fmt(st.pass/st.n*100,1)} % (${st.pass}/${st.n})`]
+  ].map(([a,b])=>`<div class="stat"><span class="hint">${a}</span><b>${b}</b></div>`).join('');
+  const mx=Math.max(...st.dist.map(d=>d.count),1);
+  $('spiegel').innerHTML = `<table class="grid" style="max-width:600px"><thead><tr><th>Note</th><th class="c">Anzahl</th><th class="c">Anteil</th><th style="width:45%">Verteilung</th></tr></thead><tbody>
+    ${st.dist.map(d=>`<tr class="${d.pass?'':'fail'}"><td>${esc(d.label)}</td><td class="c">${d.count}</td><td class="c">${fmt(d.count/st.n*100,1)} %</td><td><div class="bar" style="width:${d.count/mx*100}%"></div></td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+/* ---------- Quick calc ---------- */
+function renderQuick(){
+  $('qMax').textContent = fmt(state.max)+' Punkten';
+  const p=num($('qPts').value);
+  if(!isFinite(p)||!(state.max>0)){ $('qPct').textContent=$('qGrade').textContent=$('qNext').textContent='–'; return; }
+  const l=levelFor(p);
+  $('qPct').textContent = fmt(p/state.max*100,1)+' %';
+  $('qGrade').textContent = l.label + (state.key.scale!=='grade'?` · ${fmt(l.val)} NP`:'');
+  $('qGrade').style.color = l.pass?'':'var(--warn)';
+  $('qNext').textContent = nextInfo(p);
+}
+
+/* ---------- Word export ---------- */
+const TB='border:1px solid #000;padding:2pt 4pt;font-family:Arial,sans-serif;font-size:10pt;vertical-align:top;';
+function wordTable(cols, rows){
+  const total=cols.reduce((a,c)=>a+c.w,0);
+  return `<table border="1" cellspacing="0" cellpadding="3" style="border-collapse:collapse;table-layout:fixed;width:${total}cm;border:1px solid #000;">`+
+   `<colgroup>${cols.map(c=>`<col style="width:${c.w}cm" width="${Math.round(c.w*37.8)}">`).join('')}</colgroup>`+
+   `<thead><tr>${cols.map(c=>`<th style="${TB}width:${c.w}cm;font-weight:bold;text-align:${c.a||'left'}">${esc(c.t)}</th>`).join('')}</tr></thead>`+
+   `<tbody>${rows.map(r=>`<tr>${r.map((v,i)=>`<td style="${TB}width:${cols[i].w}cm;text-align:${cols[i].a||'left'}">${esc(v)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+function wordData(){
+  const np=state.key.scale!=='grade', sel=$('wordSel').value;
+  if(sel==='key'){
+    const cols=[{t:'Note',w:3.5},...(np?[{t:'NP',w:1.5,a:'center'}]:[]),{t:'ab %',w:2,a:'center'},{t:'ab Punkte',w:2.5,a:'center'},{t:'Punktebereich',w:3.5,a:'center'}];
+    const rows=keyRows().map(r=>[r.label,...(np?[fmt(r.val)]:[]),fmt(r.min,1)+' %',fmt(r.from),`${fmt(r.from)} – ${fmt(r.to)}`]);
+    return {cols,rows};
+  }
+  if(sel==='spiegel'){
+    const st=computeStats(); const cols=[{t:'Note',w:3.5},{t:'Anzahl',w:2,a:'center'},{t:'Anteil',w:2.5,a:'center'}];
+    const rows = st ? st.dist.map(d=>[d.label,String(d.count),fmt(d.count/st.n*100,1)+' %']) : [];
+    if(st) rows.push(['Ø Punkte / Ø Note', fmt(st.avg), np?fmt(st.avgVal,2)+' NP':fmt(st.avgVal,2)],['Bestehensquote',`${st.pass}/${st.n}`,fmt(st.pass/st.n*100,1)+' %']);
+    return {cols,rows};
+  }
+  const crit = state.critOn ? state.criteria.map(c=>({t:c.name,w:1.8,a:'center'})) : [];
+  const cols=[{t:'Nr.',w:1,a:'center'},{t:'Name',w:4.5},...crit,{t:'Punkte',w:1.8,a:'center'},{t:'%',w:1.6,a:'center'},{t:'Note',w:2.2,a:'center'},{t:'Kommentar',w:state.critOn?4:6}];
+  const rows=state.students.map((s,i)=>{
+    const pts=studentPts(s), pc=studentPct(s), l=levelFor(pts);
+    const cv = state.critOn ? state.criteria.map((c,j)=>{const v=num(s.crit?.[j]);return isFinite(v)?fmt(v):'';}) : [];
+    return [String(i+1), s.name||'', ...cv, isFinite(pts)?fmt(pts):'', isFinite(pc)?fmt(pc,1)+' %':'',
+      l ? l.label+(np?` (${fmt(l.val)})`:'') : '', s.comment||''];
+  });
+  return {cols,rows};
+}
+function wordTitle(){
+  const m=state.meta, sel=$('wordSel').value;
+  const t={list:'Klassenliste',key:'Notenschlüssel',spiegel:'Notenspiegel'}[sel];
+  const parts=[m.klasse,m.fach,m.aufgabe,m.datum?new Date(m.datum).toLocaleDateString('de-DE'):''].filter(Boolean);
+  return `${t}${parts.length?' – '+parts.join(' · '):''} (max. ${fmt(state.max)} Punkte)`;
+}
+function renderWord(){
+  const {cols,rows}=wordData();
+  $('wordBox').innerHTML = `<p style="font-family:Arial,sans-serif;font-size:11pt;font-weight:bold;margin:0 0 6pt">${esc(wordTitle())}</p>` + wordTable(cols,rows);
+}
+async function copyTable(){
+  const {cols,rows}=wordData();
+  const html = `<html><body><p style="font-family:Arial,sans-serif;font-size:11pt;font-weight:bold">${esc(wordTitle())}</p>${wordTable(cols,rows)}</body></html>`;
+  const clean = v => String(v).replace(/[\t\r\n]+/g,' ');
+  const text = wordTitle()+'\n'+[cols.map(c=>c.t),...rows].map(r=>r.map(clean).join('\t')).join('\n');
+  const msg = t => { $('copyMsg').textContent=t; setTimeout(()=>$('copyMsg').textContent='',2500); };
+  try{
+    if(navigator.clipboard && window.ClipboardItem){
+      await navigator.clipboard.write([new ClipboardItem({
+        'text/html': new Blob([html],{type:'text/html'}),
+        'text/plain': new Blob([text],{type:'text/plain'})
+      })]);
+      msg('✓ Kopiert (HTML + Text)'); return;
+    }
+    throw new Error('no api');
+  }catch(e){
+    // Fallback: Tabelle markieren und per execCommand kopieren
+    const r=document.createRange(); r.selectNodeContents($('wordBox'));
+    const s=window.getSelection(); s.removeAllRanges(); s.addRange(r);
+    const ok=document.execCommand('copy'); s.removeAllRanges();
+    msg(ok?'✓ Kopiert':'Kopieren nicht möglich – bitte manuell mit Strg+C');
+  }
+}
+
+/* ---------- Print header ---------- */
+function renderPrintHead(){
+  const m=state.meta;
+  $('printHead').innerHTML = `<h2 style="margin:0">${esc(m.aufgabe||'Leistungsbewertung')}</h2>
+    <div>${[m.klasse&&'Klasse/Kurs: '+esc(m.klasse), m.fach&&'Fach: '+esc(m.fach), m.datum&&'Datum: '+new Date(m.datum).toLocaleDateString('de-DE')].filter(Boolean).join(' &nbsp;|&nbsp; ')}</div>
+    <div>Schlüssel: ${esc(state.key.name||'')} · Maximalpunktzahl: ${fmt(state.max)}</div>`;
+}
+
+/* ---------- Global wiring ---------- */
+document.querySelectorAll('[data-meta]').forEach(el=>{
+  el.addEventListener('input',()=>{ state.meta[el.dataset.meta]=el.value; renderPrintHead(); renderWord(); save(); });
+});
+$('maxPts').addEventListener('input',e=>{
+  const v=num(e.target.value); if(isFinite(v)&&v>0){ state.max=v; renderStudentHead(); updateComputed(); }
+});
+$('rounding').addEventListener('change',e=>{ state.rounding=e.target.value; updateComputed(); });
+$('roundDir').addEventListener('change',e=>{ state.roundDir=e.target.value; updateComputed(); });
+$('qPts').addEventListener('input',e=>{ state.quick=e.target.value; renderQuick(); save(); });
+
+function updateComputed(){
+  renderKeyTable(); renderQuick();
+  state.students.forEach((_,i)=>{ if($('sr'+i)) updateStudentRow(i); });
+  renderStats(); renderWord(); renderPrintHead(); save();
+}
+function renderAll(){
+  const m=state.meta;
+  $('mKlasse').value=m.klasse||''; $('mFach').value=m.fach||''; $('mAufgabe').value=m.aufgabe||''; $('mDatum').value=m.datum||'';
+  $('maxPts').value=fmt(state.max); $('rounding').value=state.rounding; $('roundDir').value=state.roundDir;
+  $('qPts').value=state.quick||'';
+  renderKeySelect(); syncThr(); renderLevels(); renderCrit(); renderStudents();
+  updateComputed();
+}
+
+/* ---------- JSON backup ---------- */
+function exportJSON(){
+  const data={app:'notenschluessel',version:1,exported:new Date().toISOString(),state,customKeys};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  const base=[state.meta.klasse,state.meta.aufgabe].filter(Boolean).join('_').replace(/[^\wäöüÄÖÜß-]+/g,'_')||'notenschluessel';
+  a.href=URL.createObjectURL(blob); a.download=base+'_'+(state.meta.datum||'')+'.json';
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+function importJSON(ev){
+  const f=ev.target.files[0]; if(!f) return;
+  const rd=new FileReader();
+  rd.onload=()=>{
+    try{
+      const d=JSON.parse(rd.result);
+      const st=d.state||d;
+      if(!st.key||!Array.isArray(st.key.levels)) throw new Error('Ungültiges Format');
+      state=Object.assign(defaultState(),st);
+      if(d.customKeys && confirm('Die Datei enthält eigene Schlüssel. Sollen sie übernommen werden?')){
+        Object.assign(customKeys,d.customKeys); localStorage.setItem(LS_KEYS,JSON.stringify(customKeys));
+      }
+      renderAll(); alert('Import erfolgreich.');
+    }catch(e){ alert('Import fehlgeschlagen: '+e.message); }
+    ev.target.value='';
+  };
+  rd.readAsText(f);
+}
+function resetAll(){
+  if(!confirm('Alle aktuellen Daten (Kopfdaten, Klassenliste, Einstellungen) zurücksetzen? Die eigenen Schlüssel bleiben erhalten.')) return;
+  state=defaultState(); renderAll();
+}
+
+/* ---------- Init ---------- */
+(function init(){
+  try{ customKeys=JSON.parse(localStorage.getItem(LS_KEYS))||{}; }catch(e){ customKeys={}; }
+  try{ const s=JSON.parse(localStorage.getItem(LS_STATE)); if(s&&s.key) state=Object.assign(defaultState(),s); }catch(e){}
+  if(!state.students.length) for(let i=0;i<3;i++) state.students.push({name:'',points:'',crit:[],comment:''});
+  renderAll();
+})();
+window.addEventListener('beforeunload',save);
+</script>
+</body>
+</html>
