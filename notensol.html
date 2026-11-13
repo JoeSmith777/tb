@@ -1,0 +1,699 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Notenschlüssel & Klassenliste</title>
+<style>
+:root{
+  --bg:#f4f6f8;--card:#fff;--text:#17202a;--muted:#637083;
+  --line:#ccd3db;--accent:#1769aa;--danger:#b42318;--ok:#18794e;
+}
+*{box-sizing:border-box}
+body{margin:0;font:14px/1.45 system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--text);background:var(--bg)}
+header{background:#17324d;color:#fff;padding:18px 22px}
+header h1{margin:0 0 4px;font-size:24px}
+header p{margin:0;color:#dce7f1}
+main{max-width:1450px;margin:auto;padding:16px}
+nav{display:flex;flex-wrap:wrap;gap:7px;margin-bottom:14px}
+button,.button{
+  border:1px solid #aeb8c2;border-radius:5px;padding:8px 11px;background:#fff;
+  color:#17202a;font:inherit;cursor:pointer
+}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+button.danger{color:var(--danger)}
+nav button.active{background:#17324d;color:#fff;border-color:#17324d}
+section.tab{display:none}
+section.tab.active{display:block}
+.grid{display:grid;grid-template-columns:repeat(12,1fr);gap:14px}
+.card{
+  grid-column:span 12;background:var(--card);border:1px solid #d7dde3;
+  border-radius:8px;padding:15px;box-shadow:0 1px 2px #0000000c
+}
+.half{grid-column:span 6}.third{grid-column:span 4}.two-thirds{grid-column:span 8}
+h2{font-size:18px;margin:0 0 12px}h3{font-size:15px;margin:12px 0 8px}
+label{display:block;font-weight:600;margin-bottom:4px}
+input,select,textarea{
+  width:100%;border:1px solid #b9c2cb;border-radius:4px;padding:7px;
+  font:inherit;background:#fff;color:inherit
+}
+textarea{min-height:68px;resize:vertical}
+.form-grid{display:grid;grid-template-columns:repeat(12,1fr);gap:10px}
+.f2{grid-column:span 2}.f3{grid-column:span 3}.f4{grid-column:span 4}
+.f6{grid-column:span 6}.f8{grid-column:span 8}.f12{grid-column:span 12}
+.inline{display:flex;align-items:end;gap:8px;flex-wrap:wrap}
+.inline>*{flex:1}.inline button{flex:0 0 auto}
+.result{
+  border:2px solid var(--accent);border-radius:8px;padding:16px;text-align:center;
+  background:#f6fbff
+}
+.result strong{font-size:31px;display:block}
+.result .big{font-size:22px}
+.muted{color:var(--muted)}.ok{color:var(--ok)}.warn{color:#9a6700}.error{color:var(--danger)}
+.notice{border-left:4px solid #e0a100;background:#fff8dd;padding:8px 10px;margin:8px 0}
+table{width:100%;border-collapse:collapse}
+th,td{border:1px solid var(--line);padding:6px 7px;text-align:left;vertical-align:top}
+th{background:#edf1f4}
+td input,td select{min-width:65px;padding:5px}
+.num{text-align:right}.center{text-align:center}
+.scroll{overflow:auto}
+.actions{display:flex;gap:7px;flex-wrap:wrap;margin:10px 0}
+.stat-grid{display:grid;grid-template-columns:repeat(6,minmax(100px,1fr));gap:8px}
+.stat{border:1px solid var(--line);padding:9px;border-radius:5px;text-align:center}
+.stat strong{font-size:19px;display:block}
+.small{font-size:12px}
+.check{display:flex;align-items:center;gap:7px;font-weight:normal}
+.check input{width:auto}
+.threshold-row{display:grid;grid-template-columns:85px 100px 1fr;gap:8px;align-items:center;margin:5px 0}
+.word-export{background:white;padding:10px}
+.word-export table{table-layout:fixed;font-family:Arial,sans-serif;font-size:10pt}
+.word-export th,.word-export td{border:1px solid #000;background:#fff;padding:5px}
+.footer-note{text-align:center;color:var(--muted);margin:20px}
+@media(max-width:850px){
+  .half,.third,.two-thirds{grid-column:span 12}
+  .f2,.f3,.f4,.f6,.f8{grid-column:span 12}
+  .stat-grid{grid-template-columns:repeat(2,1fr)}
+}
+@media print{
+  body{background:#fff;font-size:10pt}
+  header{background:#fff;color:#000;padding:0 0 10px}
+  header p,nav,.no-print,.actions{display:none!important}
+  main{max-width:none;padding:0}
+  section.tab{display:block!important;break-after:page}
+  section.tab:empty{display:none!important}
+  .card{box-shadow:none;border:0;padding:5px;break-inside:avoid}
+  input,select,textarea{border:0;padding:0}
+  th{background:#fff}
+}
+</style>
+</head>
+<body>
+<header>
+  <h1>Notenschlüssel & Klassenliste</h1>
+  <p>Offline-Tool zur Auswertung von Schülerleistungen</p>
+</header>
+
+<main>
+<nav class="no-print">
+  <button class="active" data-tab="calc">Berechnung</button>
+  <button data-tab="key">Notenschlüssel</button>
+  <button data-tab="criteria">Teilkriterien</button>
+  <button data-tab="class">Klassenliste</button>
+  <button data-tab="word">Word-Export</button>
+  <button data-tab="backup">Sicherung</button>
+</nav>
+
+<section id="calc" class="tab active">
+<div class="grid">
+  <div class="card two-thirds">
+    <h2>Leistungsdaten</h2>
+    <div class="form-grid">
+      <div class="f3"><label>Datum</label><input id="date" type="date"></div>
+      <div class="f3"><label>Klasse</label><input id="className"></div>
+      <div class="f6"><label>Aufgabe / Leistungsnachweis</label><input id="task"></div>
+      <div class="f4"><label>Notenschlüssel</label><select id="keySelect"></select></div>
+      <div class="f2"><label>Erreichte Punkte</label><input id="points" type="number" step="any" min="0"></div>
+      <div class="f2"><label>Maximalpunkte</label><input id="maxPoints" type="number" step="any" min="0.01" value="100"></div>
+      <div class="f2"><label>Punkterundung</label>
+        <select id="scoreRound">
+          <option value="none">Keine</option><option value="half">Halbe</option><option value="whole">Ganze</option>
+        </select>
+      </div>
+      <div class="f2"><label>Grenzen</label>
+        <select id="boundaryRound">
+          <option value="up">Aufrunden</option><option value="down">Abrunden</option><option value="none">Nicht runden</option>
+        </select>
+      </div>
+    </div>
+    <p class="small muted">Dezimaltrennzeichen Punkt oder Komma möglich.</p>
+  </div>
+
+  <div class="card third">
+    <h2>Ergebnis</h2>
+    <div class="result">
+      <span class="muted">Prozentwert</span>
+      <strong id="percentResult">–</strong>
+      <div class="big" id="gradeResult">–</div>
+      <div id="gradeExtra" class="muted"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Notenschlüssel-Tabelle</h2>
+    <div class="scroll"><table id="pointsTable"></table></div>
+  </div>
+</div>
+</section>
+
+<section id="key" class="tab">
+<div class="grid">
+  <div class="card half">
+    <h2>Individuelle Schwellen</h2>
+    <p>Die Stufen zwischen 4+ (6 Punkte) und 5− (1 Punkt) werden linear verteilt. Anschließend können alle Grenzen nachjustiert werden.</p>
+    <div class="form-grid">
+      <div class="f4"><label>Ab 4+ / 6 Punkten (%)</label><input id="fourPlus" type="number" step="0.1" min="0" max="100" value="50"></div>
+      <div class="f4"><label>Ab 5− / 1 Punkt (%)</label><input id="fiveMinus" type="number" step="0.1" min="0" max="100" value="20"></div>
+      <div class="f4 inline"><button id="generateLinear" class="primary">Linear erzeugen</button></div>
+    </div>
+  </div>
+  <div class="card half">
+    <h2>Eigener Schlüssel</h2>
+    <div class="inline">
+      <div><label>Name</label><input id="customName" placeholder="z. B. Mathematik Klasse 8"></div>
+      <button id="saveKey" class="primary">Speichern</button>
+      <button id="deleteKey" class="danger">Löschen</button>
+    </div>
+    <p id="keyMessage" class="small"></p>
+  </div>
+  <div class="card">
+    <h2>Prozentgrenzen bearbeiten</h2>
+    <div id="thresholdEditor"></div>
+    <p class="small muted">Die Grenzen müssen von oben nach unten absteigen. Die jeweils höchste erfüllte Grenze bestimmt die Bewertung.</p>
+  </div>
+</div>
+</section>
+
+<section id="criteria" class="tab">
+<div class="grid">
+  <div class="card">
+    <h2>Gewichtete Teilkriterien</h2>
+    <div class="form-grid">
+      <div class="f4"><label>Gewichtungs-Preset</label>
+        <select id="weightPreset">
+          <option value="">Benutzerdefiniert</option>
+          <option value="50,50">2 Kriterien: 50 / 50</option>
+          <option value="40,30,30">3 Kriterien: 40 / 30 / 30</option>
+          <option value="25,25,25,25">4 Kriterien: gleich</option>
+          <option value="60,40">Schriftlich 60 / Inhalt 40</option>
+        </select>
+      </div>
+      <div class="f8 inline"><button id="addCriterion">Kriterium hinzufügen</button></div>
+    </div>
+    <div id="weightWarning"></div>
+    <div class="scroll">
+      <table>
+        <thead><tr><th>Kriterium</th><th>Erreicht</th><th>Maximum</th><th>Gewicht %</th><th>Ergebnis</th><th></th></tr></thead>
+        <tbody id="criteriaBody"></tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button id="useWeighted" class="primary">Gewichtetes Ergebnis übernehmen</button>
+    </div>
+  </div>
+</div>
+</section>
+
+<section id="class" class="tab">
+<div class="grid">
+  <div class="card">
+    <h2>Klassenliste</h2>
+    <div class="actions">
+      <button id="addStudent" class="primary">Schüler hinzufügen</button>
+      <button id="clearStudents" class="danger">Liste leeren</button>
+      <button onclick="window.print()">Drucken</button>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th style="width:22%">Name</th><th>Punkte</th><th>%</th><th>Bewertung</th>
+          <th style="width:34%">Kommentar</th><th class="no-print"></th>
+        </tr></thead>
+        <tbody id="studentBody"></tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Statistik</h2>
+    <div id="stats" class="stat-grid"></div>
+    <h3>Notenspiegel</h3>
+    <div class="scroll"><table id="distribution"></table></div>
+  </div>
+</div>
+</section>
+
+<section id="word" class="tab">
+<div class="grid">
+  <div class="card">
+    <h2>Export für Word</h2>
+    <p>Die Tabelle kann markiert und mit Strg+C kopiert oder über den Button als HTML und tabulatorgetrennter Text in die Zwischenablage geschrieben werden.</p>
+    <div class="actions no-print"><button id="copyTable" class="primary">Tabelle kopieren</button><span id="copyMessage"></span></div>
+    <div id="wordTable" class="word-export"></div>
+  </div>
+</div>
+</section>
+
+<section id="backup" class="tab">
+<div class="grid">
+  <div class="card half">
+    <h2>Sicherung exportieren</h2>
+    <p>Alle Einstellungen, eigenen Schlüssel, Kriterien und die Klassenliste werden als JSON gesichert.</p>
+    <button id="exportJson" class="primary">JSON herunterladen</button>
+  </div>
+  <div class="card half">
+    <h2>Sicherung importieren</h2>
+    <input id="importFile" type="file" accept=".json,application/json">
+    <p id="importMessage"></p>
+  </div>
+  <div class="card">
+    <h2>Lokale Daten</h2>
+    <p>Änderungen werden automatisch im Browser gespeichert.</p>
+    <button id="resetAll" class="danger">Alle lokalen Daten zurücksetzen</button>
+  </div>
+</div>
+</section>
+
+<p class="footer-note">Alle Daten verbleiben lokal in diesem Browser.</p>
+</main>
+
+<script>
+"use strict";
+
+const STORAGE_KEY = "notenschluessel_tool_v1";
+
+const abitur = [
+  ["15","1+",95],["14","1",90],["13","1−",85],
+  ["12","2+",80],["11","2",75],["10","2−",70],
+  ["9","3+",65],["8","3",60],["7","3−",55],
+  ["6","4+",50],["5","4",45],["4","4−",40],
+  ["3","5+",33],["2","5",27],["1","5−",20],["0","6",0]
+].map(([points,label,min])=>({points,label,min}));
+
+const ihk = [
+  ["","1",92],["","2",81],["","3",67],
+  ["","4",50],["","5",30],["","6",0]
+].map(([points,label,min])=>({points,label,min}));
+
+const defaultState = {
+  meta:{date:new Date().toISOString().slice(0,10),className:"",task:""},
+  selectedKey:"preset:abitur",
+  points:"",
+  maxPoints:100,
+  scoreRound:"none",
+  boundaryRound:"up",
+  customKeys:[],
+  editor:JSON.parse(JSON.stringify(abitur)),
+  criteria:[
+    {name:"Kriterium 1",score:"",max:"",weight:50},
+    {name:"Kriterium 2",score:"",max:"",weight:50}
+  ],
+  students:[]
+};
+
+let state = loadState();
+
+const $ = id => document.getElementById(id);
+const clone = value => JSON.parse(JSON.stringify(value));
+
+function num(value){
+  if(typeof value==="number") return Number.isFinite(value)?value:NaN;
+  return Number(String(value).replace(",","."));
+}
+function fmt(value,digits=2){
+  if(!Number.isFinite(value)) return "–";
+  return new Intl.NumberFormat("de-DE",{maximumFractionDigits:digits}).format(value);
+}
+function esc(value){
+  return String(value??"").replace(/[&<>"']/g,c=>({
+    "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+  }[c]));
+}
+function loadState(){
+  try{
+    const saved=JSON.parse(localStorage.getItem(STORAGE_KEY));
+    return saved ? {...clone(defaultState),...saved,meta:{...defaultState.meta,...saved.meta}} : clone(defaultState);
+  }catch(e){ return clone(defaultState); }
+}
+function save(){
+  localStorage.setItem(STORAGE_KEY,JSON.stringify(state));
+}
+function getKeys(){
+  return [
+    {id:"preset:abitur",name:"Abitur NRW / KMK-Standard",type:"points",levels:abitur},
+    {id:"preset:ihk",name:"IHK-Notenschlüssel",type:"grades",levels:ihk},
+    ...state.customKeys
+  ];
+}
+function activeKey(){
+  return getKeys().find(k=>k.id===state.selectedKey)||getKeys()[0];
+}
+function gradeFor(percent,key=activeKey()){
+  if(!Number.isFinite(percent)) return null;
+  const sorted=[...key.levels].sort((a,b)=>b.min-a.min);
+  return sorted.find(level=>percent+1e-9>=Number(level.min))||sorted.at(-1);
+}
+function roundedScore(value){
+  if(state.scoreRound==="whole") return Math.round(value);
+  if(state.scoreRound==="half") return Math.round(value*2)/2;
+  return value;
+}
+function boundary(value){
+  if(state.boundaryRound==="up") return Math.ceil(value-1e-10);
+  if(state.boundaryRound==="down") return Math.floor(value+1e-10);
+  return Math.round(value*100)/100;
+}
+function levelText(level,key=activeKey()){
+  if(!level) return "–";
+  return key.type==="points" ? `${level.points} Notenpunkte (${level.label})` : `Note ${level.label}`;
+}
+function numericGrade(level,key=activeKey()){
+  if(!level) return NaN;
+  if(key.type==="points"){
+    const p=Number(level.points);
+    return p>=13?1:p>=10?2:p>=7?3:p>=4?4:p>=1?5:6;
+  }
+  return Number(String(level.label).replace(",",".").replace(/[+−-]/g,""));
+}
+function passed(level,key=activeKey()){
+  if(!level) return false;
+  return key.type==="points" ? Number(level.points)>=4 : numericGrade(level,key)<=4;
+}
+
+function renderKeySelect(){
+  $("keySelect").innerHTML=getKeys().map(k=>
+    `<option value="${esc(k.id)}"${k.id===state.selectedKey?" selected":""}>${esc(k.name)}</option>`
+  ).join("");
+}
+function renderInputs(){
+  $("date").value=state.meta.date||"";
+  $("className").value=state.meta.className||"";
+  $("task").value=state.meta.task||"";
+  $("points").value=state.points;
+  $("maxPoints").value=state.maxPoints;
+  $("scoreRound").value=state.scoreRound;
+  $("boundaryRound").value=state.boundaryRound;
+}
+function renderResult(){
+  const raw=num(state.points), max=num(state.maxPoints);
+  const score=roundedScore(raw);
+  const percent=Number.isFinite(score)&&max>0 ? score/max*100 : NaN;
+  const level=gradeFor(percent);
+  $("percentResult").textContent=Number.isFinite(percent)?fmt(percent,2)+" %":"–";
+  $("gradeResult").textContent=levelText(level);
+  $("gradeExtra").textContent=
+    Number.isFinite(raw)&&raw!==score ? `Gerundet: ${fmt(score)} von ${fmt(max)} Punkten` :
+    Number.isFinite(raw)&&max>0 ? `${fmt(score)} von ${fmt(max)} Punkten` : "";
+  renderPointsTable();
+}
+function renderPointsTable(){
+  const key=activeKey(), max=num(state.maxPoints);
+  $("pointsTable").innerHTML=`
+    <thead><tr><th>${key.type==="points"?"Notenpunkte":"Note"}</th>
+    <th>Bezeichnung</th><th>Ab Prozent</th><th>Mindestpunkte</th></tr></thead>
+    <tbody>${key.levels.map(l=>`
+      <tr><td>${esc(key.type==="points"?l.points:l.label)}</td>
+      <td>${esc(key.type==="points"?l.label:"Note "+l.label)}</td>
+      <td class="num">${fmt(Number(l.min),2)} %</td>
+      <td class="num">${max>0?fmt(boundary(max*Number(l.min)/100),2):"–"}</td></tr>
+    `).join("")}</tbody>`;
+}
+function renderEditor(){
+  $("thresholdEditor").innerHTML=state.editor.map((l,i)=>`
+    <div class="threshold-row">
+      <strong>${esc(l.points!==""?l.points+" P":l.label)}</strong>
+      <span>${esc(l.label)}</span>
+      <input type="number" min="0" max="100" step="0.1" value="${esc(l.min)}"
+        data-threshold="${i}" aria-label="Grenze ${esc(l.label)}">
+    </div>`).join("");
+}
+function generateLinear(){
+  const high=num($("fourPlus").value), low=num($("fiveMinus").value);
+  if(!Number.isFinite(high)||!Number.isFinite(low)||high<=low){
+    $("keyMessage").textContent="4+ muss oberhalb von 5− liegen.";
+    $("keyMessage").className="small error"; return;
+  }
+  const levels=clone(abitur);
+  for(const level of levels){
+    const p=Number(level.points);
+    if(p>=6) level.min=high+(p-6)*(100-high)/9;
+    else if(p>=1) level.min=low+(p-1)*(high-low)/5;
+    else level.min=0;
+    level.min=Math.round(level.min*10)/10;
+  }
+  state.editor=levels;
+  renderEditor();save();
+  $("keyMessage").textContent="Lineare Grenzen erzeugt.";
+  $("keyMessage").className="small ok";
+}
+function saveCustomKey(){
+  const name=$("customName").value.trim();
+  if(!name){$("keyMessage").textContent="Bitte einen Namen eingeben.";return}
+  const id=state.selectedKey.startsWith("custom:")
+    ? state.selectedKey : "custom:"+Date.now();
+  const key={id,name,type:"points",levels:clone(state.editor)};
+  const index=state.customKeys.findIndex(k=>k.id===id);
+  if(index>=0) state.customKeys[index]=key; else state.customKeys.push(key);
+  state.selectedKey=id;
+  save();renderAll();
+  $("keyMessage").textContent="Schlüssel gespeichert.";
+  $("keyMessage").className="small ok";
+}
+function deleteCustomKey(){
+  if(!state.selectedKey.startsWith("custom:")){
+    $("keyMessage").textContent="Presets können nicht gelöscht werden.";return;
+  }
+  state.customKeys=state.customKeys.filter(k=>k.id!==state.selectedKey);
+  state.selectedKey="preset:abitur";state.editor=clone(abitur);
+  $("customName").value="";save();renderAll();
+}
+
+function renderCriteria(){
+  $("criteriaBody").innerHTML=state.criteria.map((c,i)=>{
+    const p=num(c.score),m=num(c.max);
+    const result=m>0&&Number.isFinite(p)?p/m*100:NaN;
+    return `<tr>
+      <td><input value="${esc(c.name)}" data-ci="${i}" data-field="name"></td>
+      <td><input type="number" step="any" value="${esc(c.score)}" data-ci="${i}" data-field="score"></td>
+      <td><input type="number" step="any" value="${esc(c.max)}" data-ci="${i}" data-field="max"></td>
+      <td><input type="number" step="0.1" value="${esc(c.weight)}" data-ci="${i}" data-field="weight"></td>
+      <td class="num">${Number.isFinite(result)?fmt(result,2)+" %":"–"}</td>
+      <td><button class="danger" data-remove-ci="${i}">×</button></td>
+    </tr>`;
+  }).join("");
+  const total=state.criteria.reduce((s,c)=>s+(num(c.weight)||0),0);
+  $("weightWarning").innerHTML=Math.abs(total-100)<0.001
+    ? `<p class="ok">Gewichtung: ${fmt(total)} %</p>`
+    : `<div class="notice">Warnung: Die Gewichtung beträgt ${fmt(total)} % statt 100 %.</div>`;
+}
+function weightedPercent(){
+  let totalWeight=0,sum=0;
+  for(const c of state.criteria){
+    const s=num(c.score),m=num(c.max),w=num(c.weight);
+    if(!(m>0&&Number.isFinite(s)&&Number.isFinite(w))) return NaN;
+    sum+=(s/m*100)*w; totalWeight+=w;
+  }
+  return Math.abs(totalWeight-100)<0.001?sum/100:NaN;
+}
+function useWeighted(){
+  const p=weightedPercent();
+  if(!Number.isFinite(p)){
+    alert("Bitte alle Kriterien ausfüllen und die Gewichtung auf 100 % setzen.");return;
+  }
+  state.maxPoints=100;state.points=Math.round(p*100)/100;
+  save();renderAll();openTab("calc");
+}
+
+function renderStudents(){
+  $("studentBody").innerHTML=state.students.map((s,i)=>{
+    const score=roundedScore(num(s.points)),max=num(state.maxPoints);
+    const p=max>0&&Number.isFinite(score)?score/max*100:NaN;
+    const l=gradeFor(p);
+    return `<tr>
+      <td><input value="${esc(s.name)}" data-si="${i}" data-sfield="name"></td>
+      <td><input type="number" step="any" value="${esc(s.points)}" data-si="${i}" data-sfield="points"></td>
+      <td class="num">${Number.isFinite(p)?fmt(p,2):"–"}</td>
+      <td>${esc(levelText(l))}</td>
+      <td><textarea data-si="${i}" data-sfield="comment">${esc(s.comment)}</textarea></td>
+      <td class="no-print"><button class="danger" data-remove-si="${i}">×</button></td>
+    </tr>`;
+  }).join("");
+  renderStats();renderWord();
+}
+function validStudentData(){
+  const max=num(state.maxPoints);
+  return state.students.map(s=>{
+    const score=roundedScore(num(s.points));
+    const percent=max>0&&Number.isFinite(score)?score/max*100:NaN;
+    return {...s,score,percent,level:gradeFor(percent)};
+  }).filter(s=>Number.isFinite(s.percent));
+}
+function median(values){
+  if(!values.length)return NaN;
+  const a=[...values].sort((x,y)=>x-y),m=Math.floor(a.length/2);
+  return a.length%2?a[m]:(a[m-1]+a[m])/2;
+}
+function renderStats(){
+  const data=validStudentData(),key=activeKey();
+  const avgPoints=data.length?data.reduce((s,x)=>s+x.score,0)/data.length:NaN;
+  const avgPercent=data.length?data.reduce((s,x)=>s+x.percent,0)/data.length:NaN;
+  const avgLevel=gradeFor(avgPercent);
+  const med=median(data.map(x=>x.score));
+  const pass=data.length?data.filter(x=>passed(x.level,key)).length/data.length*100:NaN;
+  const min=data.length?Math.min(...data.map(x=>x.score)):NaN;
+  const max=data.length?Math.max(...data.map(x=>x.score)):NaN;
+  const stats=[
+    ["Erfasst",data.length],["Ø Punkte",fmt(avgPoints)],["Ø Bewertung",levelText(avgLevel)],
+    ["Median",fmt(med)],["Bestanden",Number.isFinite(pass)?fmt(pass,1)+" %":"–"],
+    ["Min / Max",`${fmt(min)} / ${fmt(max)}`]
+  ];
+  $("stats").innerHTML=stats.map(x=>`<div class="stat"><span>${x[0]}</span><strong>${esc(x[1])}</strong></div>`).join("");
+  const groups={};
+  for(const level of key.levels) groups[levelText(level,key)]=0;
+  for(const d of data) if(d.level) groups[levelText(d.level,key)]++;
+  $("distribution").innerHTML="<thead><tr>"+Object.keys(groups).map(x=>`<th>${esc(x)}</th>`).join("")+
+    "</tr></thead><tbody><tr>"+Object.values(groups).map(x=>`<td class="center">${x}</td>`).join("")+"</tr></tbody>";
+}
+function renderWord(){
+  const data=validStudentData();
+  $("wordTable").innerHTML=`
+    <table id="copySource">
+      <colgroup><col style="width:24%"><col style="width:12%"><col style="width:12%">
+      <col style="width:18%"><col style="width:34%"></colgroup>
+      <tr><td colspan="5"><b>${esc(state.meta.task||"Leistungsübersicht")}</b><br>
+      Klasse: ${esc(state.meta.className||"–")} &nbsp; Datum: ${esc(state.meta.date||"–")}<br>
+      Maximalpunkte: ${esc(fmt(num(state.maxPoints)))} &nbsp; Schlüssel: ${esc(activeKey().name)}</td></tr>
+      <tr><th>Name</th><th>Punkte</th><th>Prozent</th><th>Bewertung</th><th>Kommentar</th></tr>
+      ${data.map(s=>`<tr><td>${esc(s.name)}</td><td>${fmt(s.score)}</td>
+        <td>${fmt(s.percent,2)} %</td><td>${esc(levelText(s.level))}</td><td>${esc(s.comment)}</td></tr>`).join("")}
+    </table>`;
+}
+async function copyWordTable(){
+  const table=$("copySource");
+  const rows=[...table.rows].map(r=>[...r.cells].map(c=>c.innerText.replace(/\s+/g," ").trim()).join("\t")).join("\n");
+  const html=table.outerHTML;
+  try{
+    if(window.ClipboardItem&&navigator.clipboard?.write){
+      await navigator.clipboard.write([new ClipboardItem({
+        "text/html":new Blob([html],{type:"text/html"}),
+        "text/plain":new Blob([rows],{type:"text/plain"})
+      })]);
+    }else{
+      await navigator.clipboard.writeText(rows);
+    }
+    $("copyMessage").textContent="Tabelle kopiert.";
+  }catch(e){
+    const range=document.createRange();range.selectNode(table);
+    const sel=getSelection();sel.removeAllRanges();sel.addRange(range);
+    $("copyMessage").textContent="Tabelle markiert – bitte Strg+C drücken.";
+  }
+}
+
+function renderAll(){
+  renderKeySelect();renderInputs();renderResult();renderEditor();
+  renderCriteria();renderStudents();
+}
+function openTab(id){
+  document.querySelectorAll(".tab").forEach(x=>x.classList.toggle("active",x.id===id));
+  document.querySelectorAll("nav button").forEach(x=>x.classList.toggle("active",x.dataset.tab===id));
+  if(id==="word")renderWord();
+}
+function exportJson(){
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob);
+  a.download=`notenschluessel-${new Date().toISOString().slice(0,10)}.json`;
+  a.click();URL.revokeObjectURL(a.href);
+}
+function importJson(file){
+  const reader=new FileReader();
+  reader.onload=()=>{
+    try{
+      const data=JSON.parse(reader.result);
+      state={...clone(defaultState),...data,meta:{...defaultState.meta,...data.meta}};
+      save();renderAll();
+      $("importMessage").textContent="Sicherung erfolgreich importiert.";
+      $("importMessage").className="ok";
+    }catch(e){
+      $("importMessage").textContent="Ungültige JSON-Datei.";
+      $("importMessage").className="error";
+    }
+  };
+  reader.readAsText(file);
+}
+
+document.querySelector("nav").addEventListener("click",e=>{
+  if(e.target.dataset.tab)openTab(e.target.dataset.tab);
+});
+["date","className","task"].forEach(id=>$(id).addEventListener("input",()=>{
+  state.meta[id==="className"?"className":id]=$(id).value;save();renderWord();
+}));
+$("points").addEventListener("input",()=>{state.points=$("points").value;save();renderResult()});
+$("maxPoints").addEventListener("input",()=>{
+  state.maxPoints=$("maxPoints").value;save();renderResult();renderStudents()
+});
+$("scoreRound").addEventListener("change",()=>{state.scoreRound=$("scoreRound").value;save();renderAll()});
+$("boundaryRound").addEventListener("change",()=>{state.boundaryRound=$("boundaryRound").value;save();renderPointsTable()});
+$("keySelect").addEventListener("change",()=>{
+  state.selectedKey=$("keySelect").value;
+  const k=activeKey();
+  if(k.type==="points")state.editor=clone(k.levels);
+  $("customName").value=k.id.startsWith("custom:")?k.name:"";
+  save();renderAll();
+});
+$("thresholdEditor").addEventListener("input",e=>{
+  if(e.target.dataset.threshold!==undefined){
+    state.editor[Number(e.target.dataset.threshold)].min=num(e.target.value);
+    save();
+  }
+});
+$("generateLinear").onclick=generateLinear;
+$("saveKey").onclick=saveCustomKey;
+$("deleteKey").onclick=deleteCustomKey;
+
+$("criteriaBody").addEventListener("input",e=>{
+  const i=e.target.dataset.ci,field=e.target.dataset.field;
+  if(i!==undefined&&field){
+    state.criteria[Number(i)][field]=e.target.value;save();renderCriteria();
+  }
+});
+$("criteriaBody").addEventListener("click",e=>{
+  if(e.target.dataset.removeCi!==undefined){
+    state.criteria.splice(Number(e.target.dataset.removeCi),1);save();renderCriteria();
+  }
+});
+$("addCriterion").onclick=()=>{
+  state.criteria.push({name:`Kriterium ${state.criteria.length+1}`,score:"",max:"",weight:0});
+  save();renderCriteria();
+};
+$("weightPreset").onchange=()=>{
+  if(!$("weightPreset").value)return;
+  const weights=$("weightPreset").value.split(",").map(Number);
+  state.criteria=weights.map((w,i)=>({
+    name:state.criteria[i]?.name||`Kriterium ${i+1}`,
+    score:state.criteria[i]?.score||"",max:state.criteria[i]?.max||"",weight:w
+  }));
+  save();renderCriteria();
+};
+$("useWeighted").onclick=useWeighted;
+
+$("addStudent").onclick=()=>{
+  state.students.push({name:"",points:"",comment:""});save();renderStudents();
+};
+$("clearStudents").onclick=()=>{
+  if(confirm("Klassenliste wirklich leeren?")){state.students=[];save();renderStudents()}
+};
+$("studentBody").addEventListener("input",e=>{
+  const i=e.target.dataset.si,field=e.target.dataset.sfield;
+  if(i!==undefined&&field){
+    state.students[Number(i)][field]=e.target.value;save();
+    if(field==="points")renderStudents();else renderWord();
+  }
+});
+$("studentBody").addEventListener("click",e=>{
+  if(e.target.dataset.removeSi!==undefined){
+    state.students.splice(Number(e.target.dataset.removeSi),1);save();renderStudents();
+  }
+});
+$("copyTable").onclick=copyWordTable;
+$("exportJson").onclick=exportJson;
+$("importFile").onchange=e=>e.target.files[0]&&importJson(e.target.files[0]);
+$("resetAll").onclick=()=>{
+  if(confirm("Alle lokalen Daten endgültig löschen?")){
+    localStorage.removeItem(STORAGE_KEY);state=clone(defaultState);renderAll();
+  }
+};
+
+renderAll();
+</script>
+</body>
+</html>
