@@ -1,0 +1,533 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notenschlüssel-Tool</title>
+<style>
+  :root { --c:#2563eb; --bg:#f3f4f6; --ok:#16a34a; --err:#dc2626; }
+  * { box-sizing:border-box; }
+  body { font-family:system-ui,Arial,sans-serif; background:var(--bg); margin:0; padding:20px; color:#111827; }
+  .wrap { max-width:1100px; margin:auto; display:grid; gap:16px; }
+  .card { background:#fff; border-radius:12px; padding:18px; box-shadow:0 1px 4px rgba(0,0,0,.1); }
+  h1 { margin:0 0 4px; font-size:1.5rem; }
+  h2 { margin:0 0 12px; font-size:1.1rem; }
+  label { font-size:.82rem; color:#4b5563; display:block; margin-bottom:4px; }
+  input, select, button, textarea { font:inherit; padding:7px 9px; border:1px solid #d1d5db; border-radius:8px; }
+  button { background:var(--c); color:#fff; border:none; cursor:pointer; }
+  button.sec { background:#e5e7eb; color:#111827; }
+  button.del { background:var(--err); }
+  button:hover { opacity:.9; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  .row > div { flex:1; min-width:130px; }
+  .row input, .row select { width:100%; }
+  .tabs { display:flex; gap:6px; flex-wrap:wrap; }
+  .tabs button { background:#e5e7eb; color:#111827; }
+  .tabs button.active { background:var(--c); color:#fff; }
+  .panel { display:none; } .panel.active { display:block; }
+  table.t { width:100%; border-collapse:collapse; }
+  table.t th, table.t td { text-align:left; padding:6px; border-bottom:1px solid #e5e7eb; font-size:.9rem; }
+  table.t td input[type=number] { width:80px; }
+  table.t td input[type=text] { width:100%; }
+  .warn { padding:8px 12px; border-radius:8px; margin-top:10px; font-size:.88rem; }
+  .warn.err { background:#fee2e2; color:var(--err); }
+  .warn.ok { background:#dcfce7; color:var(--ok); }
+  .result { display:flex; gap:24px; flex-wrap:wrap; align-items:center; }
+  .big { font-size:2.2rem; font-weight:700; color:var(--c); }
+  .hint { font-size:.8rem; color:#6b7280; margin-top:6px; }
+  /* Export-Tabellen: bewusst schlicht für Word */
+  .exp { border-collapse:collapse; font-family:Calibri,Arial,sans-serif; font-size:11pt; }
+  .exp th, .exp td { border:1px solid #000; padding:4px 8px; text-align:left; }
+  .exp th { background:#d9d9d9; }
+  .exp caption { text-align:left; font-weight:bold; padding-bottom:4px; }
+  @media print { .noprint { display:none !important; } body { background:#fff; } .card { box-shadow:none; } .panel { display:block !important; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<div class="card">
+  <h1>Notenschlüssel-Tool</h1>
+  <div style="color:#6b7280">Punkte → Note · Abitur NRW (KMK) · IHK · eigene Schlüssel · Klassenauswertung · Word-Export</div>
+  <div class="row" style="margin-top:12px">
+    <div><label>Klasse / Kurs</label><input id="klasse" type="text"></div>
+    <div><label>Leistung / Aufgabe</label><input id="aufgabe" type="text"></div>
+    <div><label>Datum</label><input id="datum" type="date"></div>
+  </div>
+</div>
+
+<!-- Schlüssel -->
+<div class="card noprint">
+  <h2>1. Notenschlüssel</h2>
+  <div class="row">
+    <div><label>Schlüssel auswählen</label><select id="keySel"></select></div>
+    <div><label>Name (zum Speichern als eigener Schlüssel)</label><input id="keyName" type="text" placeholder="z. B. Klausur Q1"></div>
+    <div style="flex:none;display:flex;gap:8px">
+      <button id="keySave">Speichern</button>
+      <button id="keyDel" class="del">Löschen</button>
+    </div>
+  </div>
+
+  <div id="thresholdBox" style="margin-top:14px">
+    <div class="row">
+      <div><label>Ab wie viel % gibt es 4+ (6 Punkte)?</label><input id="p4plus" type="number" step="0.5" min="0" max="100"></div>
+      <div><label>Ab wie viel % gibt es 5− (1 Punkt)?</label><input id="p5minus" type="number" step="0.5" min="0" max="100"></div>
+      <div style="flex:none"><button id="applyLinear" class="sec">Stufen dazwischen linear verteilen</button></div>
+    </div>
+    <div class="hint">Gilt nur für 0–15-Schlüssel. Die Stufen 15 bis 7 sowie 5 bis 2 werden anhand der beiden Ankerwerte neu verteilt (15 Punkte bleibt bei 95 %). Einzelne Stufen können unten manuell angepasst werden.</div>
+  </div>
+
+  <table class="t" style="margin-top:12px">
+    <thead><tr><th>Note</th><th>Punkte/Stufe</th><th>ab % der Gesamtpunktzahl</th></tr></thead>
+    <tbody id="keyRows"></tbody>
+  </table>
+  <div id="keyMsg" class="warn"></div>
+</div>
+
+<!-- Eingabe -->
+<div class="card">
+  <h2>2. Bewertung</h2>
+  <div class="tabs noprint">
+    <button class="active" data-tab="single">Einzelne Leistung</button>
+    <button data-tab="crit">Gewichtete Kriterien</button>
+    <button data-tab="class">Klassenliste</button>
+    <button data-tab="table">Punktetabelle</button>
+  </div>
+
+  <!-- Einzeln -->
+  <div id="tab-single" class="panel active" style="margin-top:14px">
+    <div class="row">
+      <div><label>Maximalpunktzahl</label><input id="maxPts" type="number" min="0.5" step="0.5" value="60"></div>
+      <div><label>Erreichte Punkte</label><input id="gotPts" type="number" min="0" step="0.5"></div>
+      <div><label>Rundung der Punkte</label>
+        <select id="rndMode"><option value="0">keine</option><option value="0.5">auf halbe Punkte</option><option value="1">auf ganze Punkte</option></select></div>
+    </div>
+    <div class="result" style="margin-top:14px">
+      <div><label>Anteil</label><div class="big" id="rPct">–</div></div>
+      <div><label>Note</label><div class="big" id="rNote">–</div></div>
+      <div><label>Notenpunkte / Stufe</label><div class="big" id="rNP">–</div></div>
+      <div><label>Dezimalnote</label><div class="big" id="rDec">–</div></div>
+    </div>
+    <div id="rText" class="hint"></div>
+  </div>
+
+  <!-- Kriterien -->
+  <div id="tab-crit" class="panel" style="margin-top:14px">
+    <div class="row noprint">
+      <div><label>Gewichtungs-Preset</label><select id="wSel"></select></div>
+      <div><label>Name für neues Preset</label><input id="wName" type="text"></div>
+      <div style="flex:none;display:flex;gap:8px">
+        <button id="wSave">Speichern</button><button id="wDel" class="del">Löschen</button>
+      </div>
+    </div>
+    <table class="t" style="margin-top:10px">
+      <thead><tr><th>Kriterium</th><th>Gewichtung (%)</th><th>Erreicht</th><th>Maximal</th><th class="noprint"></th></tr></thead>
+      <tbody id="wRows"></tbody>
+    </table>
+    <div class="row noprint" style="margin-top:10px">
+      <button class="sec" id="wAdd" style="flex:none">+ Kriterium</button>
+      <button class="sec" id="wNorm" style="flex:none">Gewichtung auf 100 % angleichen</button>
+    </div>
+    <div id="wMsg" class="warn"></div>
+    <div class="result" style="margin-top:14px">
+      <div><label>Gewichteter Anteil</label><div class="big" id="cPct">–</div></div>
+      <div><label>Note</label><div class="big" id="cNote">–</div></div>
+      <div><label>Punkte/Stufe</label><div class="big" id="cNP">–</div></div>
+    </div>
+  </div>
+
+  <!-- Klasse -->
+  <div id="tab-class" class="panel" style="margin-top:14px">
+    <div class="hint" style="margin-bottom:8px">Maximalpunktzahl aus Reiter „Einzelne Leistung“ wird verwendet.</div>
+    <table class="t">
+      <thead><tr><th>Name</th><th>Punkte</th><th>%</th><th>Note</th><th>Stufe</th><th>Kommentar</th><th class="noprint"></th></tr></thead>
+      <tbody id="cRows"></tbody>
+    </table>
+    <div class="row noprint" style="margin-top:10px">
+      <button class="sec" id="cAdd" style="flex:none">+ Schüler</button>
+      <button class="sec" id="cDelAll" style="flex:none">Liste leeren</button>
+    </div>
+    <div id="stats" style="margin-top:14px"></div>
+  </div>
+
+  <!-- Punktetabelle -->
+  <div id="tab-table" class="panel" style="margin-top:14px">
+    <div class="hint" style="margin-bottom:8px">Mindestpunkte je Note für die eingestellte Maximalpunktzahl.</div>
+    <div id="ptsTable"></div>
+  </div>
+</div>
+
+<!-- Export -->
+<div class="card noprint">
+  <h2>3. Export & Sicherung</h2>
+  <div class="row">
+    <div style="flex:none"><button id="cpKey">Schlüsseltabelle kopieren</button></div>
+    <div style="flex:none"><button id="cpClass">Klassenliste kopieren</button></div>
+    <div style="flex:none"><button id="cpPts">Punktetabelle kopieren</button></div>
+    <div style="flex:none"><button class="sec" id="print">Drucken / PDF</button></div>
+    <div style="flex:none"><button class="sec" id="expJson">Einstellungen exportieren</button></div>
+    <div style="flex:none"><button class="sec" id="impJson">Einstellungen importieren</button><input type="file" id="impFile" accept=".json" style="display:none"></div>
+  </div>
+  <div class="hint">„Kopieren“ legt die Tabelle als formatierte Word-Tabelle und als Text in der Zwischenablage ab. Alternativ können Sie die Tabelle unten markieren und mit Strg+C kopieren.</div>
+  <div id="cpMsg" class="warn ok" style="display:none"></div>
+  <div id="exportArea" style="margin-top:14px;overflow:auto"></div>
+</div>
+
+</div>
+
+<script>
+/* ===================== Daten ===================== */
+// Stufen: [Label, Stufenwert, Anteil in %]
+const NP_LABEL = ["6","5−","5","5+","4−","4","4+","3−","3","3+","2−","2","2+","1−","1","1+"]; // Index = Notenpunkte 0..15
+const DEC_15 = [6,5.3,5,4.7,4.3,4,3.7,3.3,3,2.7,2.3,2,1.7,1.3,1,1];
+
+function mk15(pcts){ // pcts: Array Länge 16 (Index = Punkte)
+  return { type:"np", steps: pcts.map((p,i)=>({label:NP_LABEL[i], val:i, pct:p})) };
+}
+const ABI = [0,20,27,33,40,45,50,55,60,65,70,75,80,85,90,95];
+const IHK = { type:"ihk", steps:[
+  {label:"6 (ungenügend)",   val:6, pct:0},
+  {label:"5 (mangelhaft)",   val:5, pct:30},
+  {label:"4 (ausreichend)",  val:4, pct:50},
+  {label:"3 (befriedigend)", val:3, pct:67},
+  {label:"2 (gut)",          val:2, pct:81},
+  {label:"1 (sehr gut)",     val:1, pct:92}
+]};
+const DEFAULT_KEYS = {
+  "Abitur NRW / KMK-Standard": mk15(ABI),
+  "IHK-Notenschlüssel": IHK,
+  "Schule linear (0–15, 4+ ab 50 %)": mk15([0,8,14,20,26,32,38,44,50,56,62,68,74,80,87,95])
+};
+const DEFAULT_W = {
+  "Standard (Inhalt/Darstellung/Sprache)": [["Inhalt",50],["Darstellung",30],["Sprache",20]],
+  "Aufsatz": [["Inhalt",40],["Aufbau",20],["Ausdruck",20],["Rechtschreibung",20]],
+  "Referat": [["Inhalt",40],["Vortrag",30],["Medien",15],["Fragen",15]]
+};
+
+const LS = "notenTool_v2";
+let state = JSON.parse(localStorage.getItem(LS) || "null") || {
+  keys: DEFAULT_KEYS, wpresets: DEFAULT_W, curKey:"Abitur NRW / KMK-Standard", curW:"Standard (Inhalt/Darstellung/Sprache)",
+  max:60, students:[{name:"",pts:"",comment:""}]
+};
+let key = JSON.parse(JSON.stringify(state.keys[state.curKey] || DEFAULT_KEYS["Abitur NRW / KMK-Standard"]));
+let wrows = (state.wpresets[state.curW] || DEFAULT_W["Standard (Inhalt/Darstellung/Sprache)"]).map(([n,w])=>({n,w,got:"",max:15}));
+
+const $ = id => document.getElementById(id);
+const fmt = (x,d=1) => (Math.round(x*Math.pow(10,d))/Math.pow(10,d)).toString().replace(".",",");
+function save(){ state.max = parseFloat($("maxPts").value)||0; localStorage.setItem(LS, JSON.stringify(state)); }
+
+/* ===================== Zuordnung ===================== */
+function steps(){ return key.steps.slice().sort((a,b)=>a.pct-b.pct); }
+function lookup(pct){
+  let hit = steps()[0];
+  for (const s of steps()) if (pct + 1e-9 >= s.pct) hit = s;
+  return hit;
+}
+function decimalNote(s){
+  if (key.type==="np") return fmt(DEC_15[s.val],1);
+  return "–";
+}
+function noteLabel(s){ return s.label; }
+function gradeOnly(s){ return key.type==="np" ? s.label : s.label.split(" ")[0]; }
+
+/* ===================== Schlüssel UI ===================== */
+function renderKeySel(){
+  const sel = $("keySel"); sel.innerHTML="";
+  Object.keys(state.keys).forEach(k=>{ const o=document.createElement("option"); o.value=o.textContent=k; sel.appendChild(o); });
+  sel.value = state.curKey;
+}
+function renderKeyRows(){
+  const tb = $("keyRows"); tb.innerHTML="";
+  const list = key.steps.slice().sort((a,b)=>b.pct-a.pct);
+  list.forEach(s=>{
+    const idx = key.steps.indexOf(s);
+    const tr = document.createElement("tr");
+    const pl = key.type==="np" ? s.val+" Punkte" : "Note "+s.label.split(" ")[0];
+    tr.innerHTML = `<td>${s.label}</td><td>${pl}</td><td><input type="number" step="0.5" min="0" max="100" value="${s.pct}" data-ks="${idx}"> %</td>`;
+    tb.appendChild(tr);
+  });
+  $("thresholdBox").style.display = key.type==="np" ? "block" : "none";
+  if (key.type==="np"){
+    $("p4plus").value = key.steps[6].pct;
+    $("p5minus").value = key.steps[1].pct;
+  }
+  checkKey(); refreshAll();
+}
+function checkKey(){
+  const s = key.steps.slice().sort((a,b)=>a.val-b.val);
+  let ok = true;
+  const ordered = key.type==="np" ? s : s.slice().reverse();
+  for (let i=1;i<ordered.length;i++) if (ordered[i].pct <= ordered[i-1].pct) ok=false;
+  const m = $("keyMsg");
+  if (ok){ m.className="warn ok"; m.textContent="Schlüssel ist konsistent (bessere Noten benötigen mehr Prozent)."; }
+  else { m.className="warn err"; m.textContent="Achtung: Die Prozentgrenzen steigen nicht durchgehend mit der Notenstufe."; }
+}
+$("keyRows").addEventListener("input", e=>{
+  const i = e.target.dataset.ks; if (i===undefined) return;
+  key.steps[i].pct = parseFloat(e.target.value)||0;
+  if (key.type==="np"){ $("p4plus").value = key.steps[6].pct; $("p5minus").value = key.steps[1].pct; }
+  checkKey(); refreshAll();
+});
+$("applyLinear").onclick = ()=>{
+  if (key.type!=="np") return;
+  const a = parseFloat($("p4plus").value), b = parseFloat($("p5minus").value);
+  if (isNaN(a)||isNaN(b)||b>=a){ alert("Die Grenze für 5− muss unter der Grenze für 4+ liegen."); return; }
+  const P = key.steps;
+  P[6].pct = a; P[1].pct = b; P[15].pct = 95; P[0].pct = 0;
+  // 6 -> 15: linear von a bis 95 (9 Stufen Abstand)
+  for (let v=7; v<=14; v++) P[v].pct = Math.round((a + (95-a)*(v-6)/9)*10)/10;
+  // 1 -> 6: linear von b bis a (5 Stufen Abstand), 5 Stufen: 1,2,3,4,5,6
+  for (let v=2; v<=5; v++) P[v].pct = Math.round((b + (a-b)*(v-1)/5)*10)/10;
+  renderKeyRows();
+};
+$("p4plus").onchange = $("p5minus").onchange = ()=>{
+  if (key.type!=="np") return;
+  key.steps[6].pct = parseFloat($("p4plus").value)||0;
+  key.steps[1].pct = parseFloat($("p5minus").value)||0;
+  renderKeyRows();
+};
+$("keySel").onchange = ()=>{
+  state.curKey = $("keySel").value;
+  key = JSON.parse(JSON.stringify(state.keys[state.curKey]));
+  $("keyName").value = state.curKey; save(); renderKeyRows();
+};
+$("keySave").onclick = ()=>{
+  const n = $("keyName").value.trim();
+  if (!n){ alert("Bitte einen Namen eingeben."); return; }
+  state.keys[n] = JSON.parse(JSON.stringify(key)); state.curKey = n; save(); renderKeySel();
+};
+$("keyDel").onclick = ()=>{
+  const k = $("keySel").value;
+  if (Object.keys(state.keys).length<=1){ alert("Mindestens ein Schlüssel muss bleiben."); return; }
+  if (confirm(`Schlüssel „${k}" löschen?`)){
+    delete state.keys[k]; state.curKey = Object.keys(state.keys)[0];
+    key = JSON.parse(JSON.stringify(state.keys[state.curKey]));
+    save(); renderKeySel(); renderKeyRows();
+  }
+};
+
+/* ===================== Einzel ===================== */
+function roundPts(x){
+  const st = parseFloat($("rndMode").value);
+  return st===0 ? x : Math.round(x/st)*st;
+}
+function calcSingle(){
+  const max = parseFloat($("maxPts").value), got = parseFloat($("gotPts").value);
+  if (!(max>0) || isNaN(got)){ ["rPct","rNote","rNP","rDec"].forEach(i=>$(i).textContent="–"); $("rText").textContent=""; return; }
+  const g = roundPts(Math.min(got,max));
+  const pct = g/max*100, s = lookup(pct);
+  $("rPct").textContent = fmt(pct,1)+" %";
+  $("rNote").textContent = gradeOnly(s);
+  $("rNP").textContent = key.type==="np" ? s.val : "–";
+  $("rDec").textContent = decimalNote(s);
+  $("rText").textContent = `${fmt(g,2)} von ${fmt(max,2)} Punkten`;
+}
+
+/* ===================== Kriterien ===================== */
+function renderW(){
+  const sel=$("wSel"); sel.innerHTML="";
+  Object.keys(state.wpresets).forEach(k=>{const o=document.createElement("option");o.value=o.textContent=k;sel.appendChild(o);});
+  sel.value=state.curW;
+  const tb=$("wRows"); tb.innerHTML="";
+  wrows.forEach((r,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input type="text" value="${String(r.n).replace(/"/g,'&quot;')}" data-w="${i}" data-f="n"></td>
+      <td><input type="number" min="0" max="100" value="${r.w}" data-w="${i}" data-f="w"></td>
+      <td><input type="number" min="0" step="0.5" value="${r.got}" data-w="${i}" data-f="got"></td>
+      <td><input type="number" min="0.5" step="0.5" value="${r.max}" data-w="${i}" data-f="max"></td>
+      <td class="noprint"><button class="sec" data-wd="${i}">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+  calcW();
+}
+function calcW(){
+  const sw = wrows.reduce((a,r)=>a+(parseFloat(r.w)||0),0);
+  const m=$("wMsg");
+  if (Math.abs(sw-100)<0.001){m.className="warn ok";m.textContent="Gewichtung ergibt 100 % ✔";}
+  else {m.className="warn err";m.textContent=`Gewichtungen ergeben ${fmt(sw,1)} % statt 100 %. Es wird anteilig gerechnet.`;}
+  let tot=0, any=false;
+  wrows.forEach(r=>{
+    const g=parseFloat(r.got), mx=parseFloat(r.max);
+    if(!isNaN(g)&&mx>0){ any=true; tot += (sw>0?(parseFloat(r.w)||0)/sw:0) * Math.min(1,g/mx); }
+  });
+  if(!any){["cPct","cNote","cNP"].forEach(i=>$(i).textContent="–");return;}
+  const pct=tot*100, s=lookup(pct);
+  $("cPct").textContent=fmt(pct,1)+" %"; $("cNote").textContent=gradeOnly(s); $("cNP").textContent=key.type==="np"?s.val:"–";
+}
+document.addEventListener("input",e=>{
+  const t=e.target;
+  if(t.dataset.w!==undefined){ wrows[t.dataset.w][t.dataset.f]=t.value; calcW(); }
+  if(t.dataset.st!==undefined){ state.students[t.dataset.st][t.dataset.f]=t.value; renderClassCalc(); save(); }
+});
+document.addEventListener("click",e=>{
+  if(e.target.dataset.wd!==undefined){ wrows.splice(+e.target.dataset.wd,1); renderW(); }
+  if(e.target.dataset.sd!==undefined){ state.students.splice(+e.target.dataset.sd,1); renderClass(); save(); }
+});
+$("wAdd").onclick=()=>{wrows.push({n:"Neues Kriterium",w:0,got:"",max:15});renderW();};
+$("wNorm").onclick=()=>{const s=wrows.reduce((a,r)=>a+(parseFloat(r.w)||0),0);if(s<=0)return;wrows.forEach(r=>r.w=Math.round((parseFloat(r.w)||0)/s*1000)/10);renderW();};
+$("wSel").onchange=()=>{state.curW=$("wSel").value;wrows=state.wpresets[state.curW].map(([n,w])=>({n,w,got:"",max:15}));$("wName").value=state.curW;save();renderW();};
+$("wSave").onclick=()=>{const n=$("wName").value.trim();if(!n){alert("Bitte Namen eingeben.");return;}state.wpresets[n]=wrows.map(r=>[r.n,parseFloat(r.w)||0]);state.curW=n;save();renderW();};
+$("wDel").onclick=()=>{const k=$("wSel").value;if(Object.keys(state.wpresets).length<=1){alert("Mindestens ein Preset muss bleiben.");return;}if(confirm(`Preset „${k}" löschen?`)){delete state.wpresets[k];state.curW=Object.keys(state.wpresets)[0];wrows=state.wpresets[state.curW].map(([n,w])=>({n,w,got:"",max:15}));save();renderW();}};
+
+/* ===================== Klasse ===================== */
+function renderClass(){
+  const tb=$("cRows"); tb.innerHTML="";
+  state.students.forEach((s,i)=>{
+    const tr=document.createElement("tr");
+    tr.innerHTML=`<td><input type="text" value="${String(s.name).replace(/"/g,'&quot;')}" data-st="${i}" data-f="name"></td>
+      <td><input type="number" min="0" step="0.5" value="${s.pts}" data-st="${i}" data-f="pts"></td>
+      <td id="cp${i}">–</td><td id="cn${i}">–</td><td id="cs${i}">–</td>
+      <td><input type="text" value="${String(s.comment||"").replace(/"/g,'&quot;')}" data-st="${i}" data-f="comment"></td>
+      <td class="noprint"><button class="sec" data-sd="${i}">✕</button></td>`;
+    tb.appendChild(tr);
+  });
+  renderClassCalc();
+}
+function studentResult(s){
+  const max=parseFloat($("maxPts").value), p=parseFloat(s.pts);
+  if(!(max>0)||isNaN(p)) return null;
+  const g=roundPts(Math.min(p,max)); const pct=g/max*100; const st=lookup(pct);
+  return {pts:g,pct,st};
+}
+function renderClassCalc(){
+  const res=[];
+  state.students.forEach((s,i)=>{
+    const r=studentResult(s);
+    $("cp"+i).textContent=r?fmt(r.pct,1)+" %":"–";
+    $("cn"+i).textContent=r?gradeOnly(r.st):"–";
+    $("cs"+i).textContent=r&&key.type==="np"?r.st.val:"–";
+    if(r) res.push(r);
+  });
+  renderStats(res); renderExport();
+}
+function renderStats(res){
+  const box=$("stats");
+  if(!res.length){box.innerHTML="";return;}
+  const pcts=res.map(r=>r.pct), avgPct=pcts.reduce((a,b)=>a+b,0)/pcts.length;
+  const sorted=pcts.slice().sort((a,b)=>a-b), med=sorted.length%2?sorted[(sorted.length-1)/2]:(sorted[sorted.length/2-1]+sorted[sorted.length/2])/2;
+  let avgTxt="–", pass=0;
+  if(key.type==="np"){
+    const avgNP=res.reduce((a,r)=>a+r.st.val,0)/res.length;
+    avgTxt=`${fmt(avgNP,2)} Punkte (≈ ${NP_LABEL[Math.round(avgNP)]})`;
+    pass=res.filter(r=>r.st.val>=5).length;
+  } else {
+    const avgN=res.reduce((a,r)=>a+r.st.val,0)/res.length;
+    avgTxt=`Ø Note ${fmt(avgN,2)}`;
+    pass=res.filter(r=>r.st.val<=4).length;
+  }
+  // Verteilung
+  const dist={}; res.forEach(r=>{const k=gradeOnly(r.st);dist[k]=(dist[k]||0)+1;});
+  const order = key.type==="np" ? NP_LABEL.slice().reverse() : ["1","2","3","4","5","6"];
+  let rows=order.filter(k=>dist[k]).map(k=>`<tr><td>${k}</td><td>${dist[k]}</td><td>${"█".repeat(dist[k])}</td></tr>`).join("");
+  box.innerHTML=`
+    <div class="result">
+      <div><label>Teilnehmer</label><div class="big">${res.length}</div></div>
+      <div><label>Ø Anteil</label><div class="big">${fmt(avgPct,1)} %</div></div>
+      <div><label>Durchschnitt</label><div style="font-size:1.1rem;font-weight:600">${avgTxt}</div></div>
+      <div><label>Median-Anteil</label><div style="font-size:1.1rem;font-weight:600">${fmt(med,1)} %</div></div>
+      <div><label>Bestanden</label><div style="font-size:1.1rem;font-weight:600">${pass} (${fmt(pass/res.length*100,0)} %)</div></div>
+      <div><label>Min / Max</label><div style="font-size:1.1rem;font-weight:600">${fmt(Math.min(...pcts),1)} % / ${fmt(Math.max(...pcts),1)} %</div></div>
+    </div>
+    <table class="t" style="margin-top:10px;max-width:420px"><thead><tr><th>Note</th><th>Anzahl</th><th>Verteilung</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+$("cAdd").onclick=()=>{state.students.push({name:"",pts:"",comment:""});renderClass();save();};
+$("cDelAll").onclick=()=>{if(confirm("Gesamte Liste leeren?")){state.students=[{name:"",pts:"",comment:""}];renderClass();save();}};
+
+/* ===================== Punktetabelle ===================== */
+function ptsTableHTML(){
+  const max=parseFloat($("maxPts").value)||0;
+  const list=key.steps.slice().sort((a,b)=>b.pct-a.pct);
+  let h=`<table class="exp" id="tblPts"><caption>Notenschlüssel – ${state.curKey} – ${fmt(max,2)} Punkte</caption>
+  <thead><tr><th>Note</th>${key.type==="np"?"<th>Punkte</th>":""}<th>ab %</th><th>ab Punkten</th></tr></thead><tbody>`;
+  list.forEach(s=>{
+    const mp=Math.ceil(max*s.pct/100*2-1e-9)/2; // aufgerundet auf halbe Punkte
+    h+=`<tr><td>${s.label}</td>${key.type==="np"?`<td>${s.val}</td>`:""}<td>${fmt(s.pct,1)} %</td><td>${fmt(mp,1)}</td></tr>`;
+  });
+  return h+"</tbody></table>";
+}
+function keyTableHTML(){
+  const list=key.steps.slice().sort((a,b)=>b.pct-a.pct);
+  let h=`<table class="exp" id="tblKey"><caption>Notenschlüssel – ${state.curKey}</caption>
+  <thead><tr><th>Note</th>${key.type==="np"?"<th>Punkte</th><th>Dezimalnote</th>":""}<th>ab % der Gesamtpunktzahl</th></tr></thead><tbody>`;
+  list.forEach(s=>{
+    h+=`<tr><td>${s.label}</td>${key.type==="np"?`<td>${s.val}</td><td>${fmt(DEC_15[s.val],1)}</td>`:""}<td>${fmt(s.pct,1)} %</td></tr>`;
+  });
+  return h+"</tbody></table>";
+}
+function classTableHTML(){
+  const max=parseFloat($("maxPts").value)||0;
+  const head=[$("klasse").value,$("aufgabe").value,$("datum").value].filter(Boolean).join(" · ");
+  let h=`<table class="exp" id="tblClass"><caption>${head||"Klassenliste"} (max. ${fmt(max,2)} Punkte, Schlüssel: ${state.curKey})</caption>
+  <thead><tr><th>Name</th><th>Punkte</th><th>%</th><th>Note</th>${key.type==="np"?"<th>Stufe</th>":""}<th>Kommentar</th></tr></thead><tbody>`;
+  state.students.forEach(s=>{
+    const r=studentResult(s);
+    h+=`<tr><td>${s.name||""}</td><td>${r?fmt(r.pts,2):""}</td><td>${r?fmt(r.pct,1)+" %":""}</td><td>${r?gradeOnly(r.st):""}</td>${key.type==="np"?`<td>${r?r.st.val:""}</td>`:""}<td>${s.comment||""}</td></tr>`;
+  });
+  return h+"</tbody></table>";
+}
+function renderPts(){ $("ptsTable").innerHTML=ptsTableHTML(); }
+function renderExport(){
+  $("exportArea").innerHTML = lastExport==="class"?classTableHTML():lastExport==="pts"?ptsTableHTML():keyTableHTML();
+}
+
+/* ===================== Kopieren ===================== */
+let lastExport="key";
+function tableToText(tbl){
+  return [...tbl.rows].map(r=>[...r.cells].map(c=>c.innerText.trim()).join("\t")).join("\n");
+}
+async function copyTable(kind){
+  lastExport=kind; renderExport();
+  const tbl=$("exportArea").querySelector("table");
+  const html=tbl.outerHTML.replace("<table",'<table border="1" cellspacing="0" cellpadding="4" style="border-collapse:collapse;font-family:Calibri,Arial;font-size:11pt"');
+  const text=tableToText(tbl);
+  const msg=$("cpMsg"); msg.style.display="block";
+  try{
+    await navigator.clipboard.write([new ClipboardItem({
+      "text/html":new Blob([html],{type:"text/html"}),
+      "text/plain":new Blob([text],{type:"text/plain"})
+    })]);
+    msg.textContent="Tabelle kopiert. In Word mit Strg+V einfügen.";
+  }catch(err){
+    const range=document.createRange(); range.selectNode(tbl);
+    const sel=window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+    try{ document.execCommand("copy"); msg.textContent="Tabelle kopiert. In Word mit Strg+V einfügen."; }
+    catch(e2){ msg.textContent="Bitte Tabelle manuell markieren und mit Strg+C kopieren."; }
+  }
+}
+$("cpKey").onclick=()=>copyTable("key");
+$("cpClass").onclick=()=>copyTable("class");
+$("cpPts").onclick=()=>{renderPts();copyTable("pts");};
+$("print").onclick=()=>window.print();
+
+/* ===================== Import/Export Einstellungen ===================== */
+$("expJson").onclick=()=>{
+  const blob=new Blob([JSON.stringify(state,null,2)],{type:"application/json"});
+  const a=document.createElement("a"); a.href=URL.createObjectURL(blob); a.download="notenschluessel-einstellungen.json"; a.click();
+};
+$("impJson").onclick=()=>$("impFile").click();
+$("impFile").onchange=e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const r=new FileReader();
+  r.onload=()=>{ try{ state=JSON.parse(r.result); localStorage.setItem(LS,JSON.stringify(state)); location.reload(); }catch(err){ alert("Datei konnte nicht gelesen werden."); } };
+  r.readAsText(f);
+};
+
+/* ===================== Tabs & Refresh ===================== */
+document.querySelectorAll(".tabs button").forEach(b=>b.onclick=()=>{
+  document.querySelectorAll(".tabs button").forEach(x=>x.classList.remove("active"));
+  document.querySelectorAll(".panel").forEach(x=>x.classList.remove("active"));
+  b.classList.add("active"); $("tab-"+b.dataset.tab).classList.add("active");
+  if(b.dataset.tab==="table") renderPts();
+});
+function refreshAll(){ calcSingle(); calcW(); renderClassCalc(); renderPts(); renderExport(); save(); }
+["maxPts","gotPts","rndMode"].forEach(id=>$(id).addEventListener("input",refreshAll));
+
+/* ===================== Start ===================== */
+$("datum").valueAsDate=new Date();
+$("maxPts").value=state.max||60;
+renderKeySel(); $("keyName").value=state.curKey;
+renderW(); $("wName").value=state.curW;
+renderClass(); renderKeyRows();
+</script>
+</body>
+</html>
