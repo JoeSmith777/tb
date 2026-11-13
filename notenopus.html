@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Notenschlüssel-Rechner</title>
+<style>
+  :root{--b:#c8ccd4;--acc:#2a5db0;--bg:#f5f6f8;--warn:#b3261e;--ok:#1e7a3a}
+  *{box-sizing:border-box}
+  body{font-family:system-ui,Segoe UI,Arial,sans-serif;margin:0;background:var(--bg);color:#222;font-size:14px}
+  header.app{background:var(--acc);color:#fff;padding:10px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px}
+  header.app h1{font-size:19px;margin:0}
+  main{max-width:1200px;margin:0 auto;padding:14px}
+  section{background:#fff;border:1px solid var(--b);border-radius:8px;padding:14px;margin-bottom:14px}
+  h2{font-size:16px;margin:0 0 10px;color:var(--acc)}
+  h3{font-size:14px;margin:12px 0 6px}
+  .row{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+  label{display:flex;flex-direction:column;font-size:12px;color:#555;gap:3px}
+  input,select,textarea{font:inherit;padding:5px 7px;border:1px solid var(--b);border-radius:5px;background:#fff}
+  input.num{width:80px;text-align:right}
+  input.small{width:60px;text-align:right}
+  textarea{resize:vertical;min-height:28px;width:100%}
+  button{font:inherit;padding:6px 11px;border:1px solid var(--acc);background:#fff;color:var(--acc);border-radius:5px;cursor:pointer}
+  button.pri{background:var(--acc);color:#fff}
+  button.del{border-color:var(--warn);color:var(--warn);padding:2px 8px}
+  button:hover{filter:brightness(.93)}
+  table.grid{border-collapse:collapse;width:100%}
+  table.grid th,table.grid td{border:1px solid var(--b);padding:4px 6px;text-align:left;vertical-align:top}
+  table.grid th{background:#eef1f6;font-size:12px}
+  td.c,th.c{text-align:center} td.r{text-align:right}
+  .cols{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:850px){.cols{grid-template-columns:1fr}}
+  .big{font-size:26px;font-weight:700;color:var(--acc)}
+  .warn{color:var(--warn);font-weight:600}
+  .ok{color:var(--ok);font-weight:600}
+  .hint{font-size:12px;color:#666}
+  .bar{background:var(--acc);height:14px;border-radius:2px;min-width:1px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:8px;margin-bottom:10px}
+  .stat{border:1px solid var(--b);border-radius:6px;padding:8px}
+  .stat b{display:block;font-size:17px;color:var(--acc)}
+  .fail{background:#fdecea}
+  #wordBox{background:#fff;border:1px dashed var(--b);padding:10px;overflow:auto}
+  .printhead{display:none}
+  @media print{
+    body{background:#fff;font-size:11pt}
+    .noprint,header.app{display:none!important}
+    section{border:none;padding:0;margin-bottom:12px;break-inside:avoid}
+    .printhead{display:block;margin-bottom:10px}
+    input,select,textarea{border:none;padding:0;background:transparent}
+    textarea{resize:none}
+    table.grid th{background:#fff}
+    .fail{background:#fff}
+    main{max-width:none;padding:0}
+  }
+</style>
+</head>
+<body>
+<header class="app noprint">
+  <h1>📊 Notenschlüssel-Rechner</h1>
+  <div class="row">
+    <button onclick="exportJSON()">Export JSON</button>
+    <button onclick="document.getElementById('impFile').click()">Import JSON</button>
+    <input type="file" id="impFile" accept=".json,application/json" style="display:none" onchange="importJSON(event)">
+    <button onclick="window.print()">Drucken</button>
+    <button class="del" onclick="resetAll()">Zurücksetzen</button>
+  </div>
+</header>
+
+<main>
+<div class="printhead" id="printHead"></div>
+
+<section class="noprint">
+  <h2>Kopfdaten</h2>
+  <div class="row">
+    <label>Klasse/Kurs<input id="mKlasse" data-meta="klasse"></label>
+    <label>Fach<input id="mFach" data-meta="fach"></label>
+    <label style="flex:1;min-width:200px">Aufgabe / Klausur<input id="mAufgabe" data-meta="aufgabe"></label>
+    <label>Datum<input type="date" id="mDatum" data-meta="datum"></label>
+  </div>
+</section>
+
+<div class="cols">
+<section class="noprint">
+  <h2>Einstellungen</h2>
+  <div class="row">
+    <label>Schlüssel
+      <select id="keySelect" onchange="selectKey(this.value)"></select>
+    </label>
+    <label>Maximalpunktzahl<input class="num" id="maxPts"></label>
+    <label>Rundung
+      <select id="rounding">
+        <option value="1">ganze Punkte</option>
+        <option value="0.5">halbe Punkte</option>
+        <option value="0">keine Rundung</option>
+      </select>
+    </label>
+    <label>Grenzen
+      <select id="roundDir">
+        <option value="up">aufrunden</option>
+        <option value="down">abrunden</option>
+      </select>
+    </label>
+  </div>
+
+  <h3>Individuelle Schwellen</h3>
+  <div class="row" id="thrBox">
+    <label>4+ (6 NP) ab %<input class="small" id="thr6"></label>
+    <label>5− (1 NP) ab %<input class="small" id="thr1"></label>
+    <button onclick="distribute()">Linear verteilen</button>
+  </div>
+  <div class="hint" id="thrHint">Die Stufen 1–5 NP werden zwischen den beiden Schwellen verteilt, die Stufen 7–14 NP zwischen 4+ und der Grenze für 15 NP. Danach kannst du jede Stufe einzeln anpassen.</div>
+
+  <h3>Eigene Schlüssel</h3>
+  <div class="row">
+    <label style="flex:1">Name<input id="keyName" placeholder="z. B. Klassenarbeit Sek I"></label>
+    <button class="pri" onclick="saveCustomKey()">Speichern</button>
+    <button class="del" onclick="deleteCustomKey()">Löschen</button>
+  </div>
+</section>
+
+<section class="noprint">
+  <h2>Schnellrechner</h2>
+  <div class="row">
+    <label>Erreichte Punkte<input class="num" id="qPts" placeholder="0"></label>
+    <div>von <span id="qMax"></span></div>
+  </div>
+  <div style="margin-top:12px" class="row">
+    <div><div class="hint">Prozent</div><div class="big" id="qPct">–</div></div>
+    <div><div class="hint">Note</div><div class="big" id="qGrade">–</div></div>
+    <div><div class="hint">bis zur nächsten Stufe</div><div class="big" id="qNext" style="font-size:18px">–</div></div>
+  </div>
+</section>
+</div>
+
+<div class="cols">
+<section class="noprint">
+  <h2>Stufen bearbeiten (Prozentgrenzen)</h2>
+  <table class="grid" id="levelTable">
+    <thead><tr><th>Note</th><th class="c">Wert (NP/Note)</th><th class="c">ab %</th><th class="c">bestanden</th><th></th></tr></thead>
+    <tbody></tbody>
+  </table>
+  <div class="row" style="margin-top:8px">
+    <button onclick="addLevel()">+ Stufe</button>
+    <span class="hint">Wert: Notenpunkte (0–15) oder Notenziffer (1–6), wird für Durchschnitte genutzt.</span>
+  </div>
+</section>
+
+<section>
+  <h2>Notenschlüssel-Tabelle</h2>
+  <div id="keyTableBox"></div>
+</section>
+</div>
+
+<section class="noprint">
+  <h2>Gewichtete Teilkriterien (optional)</h2>
+  <div class="row">
+    <label style="flex-direction:row;align-items:center;gap:6px;font-size:14px;color:#222">
+      <input type="checkbox" id="critOn"> Teilkriterien verwenden
+    </label>
+    <label>Gewichtungs-Preset
+      <select id="critPreset" onchange="applyCritPreset(this.value);this.value=''">
+        <option value="">– auswählen –</option>
+        <option value="equal">Gleich verteilt (aktuelle Kriterien)</option>
+        <option value="id">Inhalt 70 % / Darstellung 30 %</option>
+        <option value="is">Inhalt 60 % / Sprache 40 %</option>
+        <option value="afb">AFB I 30 % / AFB II 40 % / AFB III 30 %</option>
+        <option value="abi">Verstehen 25 % / Analyse 45 % / Darstellung 30 %</option>
+      </select>
+    </label>
+  </div>
+  <div id="critBox" style="margin-top:10px">
+    <table class="grid" id="critTable">
+      <thead><tr><th>Kriterium</th><th class="c">Gewicht %</th><th class="c">max. Punkte</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+    <div class="row" style="margin-top:8px">
+      <button onclick="addCrit()">+ Kriterium</button>
+      <span id="critWarn"></span>
+    </div>
+    <div class="hint">Gesamtprozent = Σ (Gewicht × erreicht / max). Die Gesamtpunkte ergeben sich als Gesamtprozent × Maximalpunktzahl.</div>
+  </div>
+</section>
+
+<section>
+  <h2>Klassenliste</h2>
+  <div style="overflow:auto">
+  <table class="grid" id="stuTable"><thead></thead><tbody></tbody></table>
+  </div>
+  <div class="row noprint" style="margin-top:8px">
+    <button class="pri" onclick="addStudent()">+ Schüler/in</button>
+    <button onclick="addStudents()">Mehrere Namen einfügen …</button>
+    <button onclick="sortStudents()">Nach Name sortieren</button>
+  </div>
+</section>
+
+<section>
+  <h2>Auswertung</h2>
+  <div class="stats" id="stats"></div>
+  <h3>Notenspiegel</h3>
+  <div id="spiegel"></div>
+</section>
+
+<section class="noprint">
+  <h2>Export für Word</h2>
+  <div class="row" style="margin-bottom:8px">
+    <label>Tabelle
+      <select id="wordSel" onchange="renderWord()">
+        <option value="list">Klassenliste</option>
+        <option value="key">Notenschlüssel</option>
+        <option value="spiegel">Notenspiegel</option>
+      </select>
+    </label>
+    <button class="pri" onclick="copyTable()">Tabelle kopieren</button>
+    <span id="copyMsg" class="ok"></span>
+  </div>
+  <div class="hint" style="margin-bottom:6px">Du kannst die Tabelle auch mit der Maus markieren und mit Strg+C kopieren. In Word fügst du sie mit Strg+V ein.</div>
+  <div id="wordBox"></div>
+</section>
+</main>
+
+<script>
+/* ---------- Presets ---------- */
+const NRW = {name:'Abitur NRW / KMK (0–15 NP)', scale:'np', levels:[
+ ['1+',15,95],['1',14,90],['1−',13,85],['2+',12,80],['2',11,75],['2−',10,70],
+ ['3+',9,65],['3',8,60],['3−',7,55],['4+',6,50],['4',5,45],['4−',4,40],
+ ['5+',3,33],['5',2,27],['5−',1,20],['6',0,0]
+].map(([label,val,min])=>({label,val,min,pass:val>=5}))};
+const IHK = {name:'IHK (Noten 1–6)', scale:'grade', levels:[
+ ['1 (sehr gut)',1,92],['2 (gut)',2,81],['3 (befriedigend)',3,67],
+ ['4 (ausreichend)',4,50],['5 (mangelhaft)',5,30],['6 (ungenügend)',6,0]
+].map(([label,val,min])=>({label,val,min,pass:val<=4}))};
+const PRESETS = {nrw:NRW, ihk:IHK};
+const CRIT_PRESETS = {
+  id:[['Inhalt',70,10],['Darstellung',30,10]],
+  is:[['Inhalt',60,10],['Sprache',40,10]],
+  afb:[['AFB I',30,10],['AFB II',40,10],['AFB III',30,10]],
+  abi:[['Verstehen',25,10],['Analyse',45,10],['Darstellung',30,10]]
+};
+const LS_STATE='notenschluessel_state_v1', LS_KEYS='notenschluessel_keys_v1';
+
+const clone = o => JSON.parse(JSON.stringify(o));
+function defaultState(){
+  return {meta:{klasse:'',fach:'',aufgabe:'',datum:new Date().toISOString().slice(0,10)},
+    max:60, rounding:'0.5', roundDir:'up', keyId:'nrw', key:clone(NRW),
+    critOn:false, criteria:[{name:'Inhalt',weight:70,max:10},{name:'Darstellung',weight:30,max:10}],
+    students:[], quick:''};
+}
+let state = defaultState();
+let customKeys = {};
+
+/* ---------- Helpers ---------- */
+const $ = id => document.getElementById(id);
+const num = v => { if(v===null||v===undefined) return NaN; const s=String(v).trim().replace(',','.'); return s===''?NaN:Number(s); };
+const fmt = (x,d=2) => isFinite(x) ? x.toLocaleString('de-DE',{maximumFractionDigits:d}) : '–';
+const esc = s => String(s??'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function sortedLevels(){ return [...state.key.levels].sort((a,b)=>b.min-a.min); }
+function roundB(x){
+  const st = Number(state.rounding);
+  if(!st) return Math.round(x*100)/100;
+  return state.roundDir==='up' ? Math.ceil(x/st-1e-9)*st : Math.floor(x/st+1e-9)*st;
+}
+function minPts(l){ return roundB(state.max*l.min/100); }
+function levelFor(points){
+  if(!isFinite(points)) return null;
+  const ls = sortedLevels();
+  for(const l of ls) if(points >= minPts(l)-1e-9) return l;
+  return ls[ls.length-1];
+}
+function nextInfo(points){
+  const ls = sortedLevels(), cur = levelFor(points);
+  const i = ls.indexOf(cur);
+  if(i<=0) return '–';
+  const need = minPts(ls[i-1]) - points;
+  return `${fmt(need)} P. → ${ls[i-1].label}`;
+}
+function save(){
+  try{ localStorage.setItem(LS_STATE, JSON.stringify(state)); }catch(e){}
+}
+
+/* ---------- Student points ---------- */
+function studentPct(s){
+  if(state.critOn){
+    let sw=0, sum=0, any=false;
+    state.criteria.forEach((c,i)=>{
+      const w=num(c.weight), m=num(c.max), v=num(s.crit?.[i]);
+      if(isFinite(w)&&m>0){ sw+=w; if(isFinite(v)){ sum+=w*v/m; any=true; } }
+    });
+    return any && sw>0 ? sum/sw*100 : NaN;
+  }
+  const p=num(s.points);
+  return isFinite(p)&&state.max>0 ? p/state.max*100 : NaN;
+}
+function studentPts(s){
+  if(state.critOn){ const pc=studentPct(s); return isFinite(pc)?Math.round(pc*state.max)/100:NaN; }
+  return num(s.points);
+}
+
+/* ---------- Key selection ---------- */
+function renderKeySelect(){
+  const sel=$('keySelect');
+  let h='<optgroup label="Presets"><option value="nrw">'+esc(NRW.name)+'</option><option value="ihk">'+esc(IHK.name)+'</option></optgroup>';
+  const ids=Object.keys(customKeys);
+  if(ids.length){ h+='<optgroup label="Eigene Schlüssel">'+ids.map(id=>`<option value="${esc(id)}">${esc(customKeys[id].name)}</option>`).join('')+'</optgroup>'; }
+  if(state.keyId==='custom') h+='<option value="custom">(bearbeitet, nicht gespeichert)</option>';
+  sel.innerHTML=h; sel.value=state.keyId;
+}
+function selectKey(id){
+  if(id==='custom') return;
+  state.keyId=id;
+  state.key = clone(PRESETS[id] || customKeys[id]);
+  $('keyName').value = customKeys[id] ? customKeys[id].name : '';
+  renderAll();
+}
+function markEdited(){
+  if(state.keyId!=='custom' && !customKeys[state.keyId]){ state.keyId='custom'; renderKeySelect(); }
+}
+function saveCustomKey(){
+  const name=$('keyName').value.trim();
+  if(!name){ alert('Bitte einen Namen für den Schlüssel eingeben.'); return; }
+  let id = Object.keys(customKeys).find(k=>customKeys[k].name===name) || ('k'+Date.now());
+  customKeys[id] = clone({...state.key, name});
+  state.key.name=name; state.keyId=id;
+  localStorage.setItem(LS_KEYS, JSON.stringify(customKeys));
+  renderKeySelect(); save();
+}
+function deleteCustomKey(){
+  const id=state.keyId;
+  if(!customKeys[id]){ alert('Die Presets lassen sich nicht löschen. Wähle einen eigenen Schlüssel aus.'); return; }
+  if(!confirm(`Schlüssel „${customKeys[id].name}“ löschen?`)) return;
+  delete customKeys[id];
+  localStorage.setItem(LS_KEYS, JSON.stringify(customKeys));
+  selectKey('nrw');
+}
+
+/* ---------- Thresholds ---------- */
+function distribute(){
+  const ls=state.key.levels;
+  const L = v => ls.find(l=>l.val===v && state.key.scale!=='grade');
+  const p6=num($('thr6').value), p1=num($('thr1').value);
+  if(!L(6)||!L(1)){ alert('Für die lineare Verteilung braucht der Schlüssel Notenpunkte mit den Stufen 6 NP und 1 NP.'); return; }
+  if(!(isFinite(p6)&&isFinite(p1)&&p6>p1&&p1>0)){ alert('Bitte gültige Schwellen eingeben (4+ muss größer sein als 5−).'); return; }
+  const top = L(15) ? L(15).min : 95;
+  if(top<=p6){ alert('Die Schwelle für 4+ muss unter der Grenze für 15 NP liegen.'); return; }
+  ls.forEach(l=>{
+    if(l.val>=1&&l.val<=6) l.min = Math.round((p1+(l.val-1)*(p6-p1)/5)*10)/10;
+    else if(l.val>6&&l.val<15) l.min = Math.round((p6+(l.val-6)*(top-p6)/9)*10)/10;
+  });
+  markEdited(); renderAll();
+}
+function syncThr(){
+  const isNP = state.key.scale!=='grade';
+  const l6=state.key.levels.find(l=>l.val===6), l1=state.key.levels.find(l=>l.val===1);
+  $('thrBox').style.opacity = isNP&&l6&&l1 ? 1 : .4;
+  if(isNP&&l6) $('thr6').value=fmt(l6.min,1);
+  if(isNP&&l1) $('thr1').value=fmt(l1.min,1);
+}
+
+/* ---------- Level editor ---------- */
+function renderLevels(){
+  const tb=$('levelTable').tBodies[0];
+  tb.innerHTML = state.key.levels.map((l,i)=>`<tr>
+    <td><input data-l="${i}" data-f="label" value="${esc(l.label)}" style="width:130px"></td>
+    <td class="c"><input class="small" data-l="${i}" data-f="val" value="${fmt(l.val,2)}"></td>
+    <td class="c"><input class="small" data-l="${i}" data-f="min" value="${fmt(l.min,2)}"></td>
+    <td class="c"><input type="checkbox" data-l="${i}" data-f="pass" ${l.pass?'checked':''}></td>
+    <td class="c"><button class="del" onclick="delLevel(${i})">×</button></td></tr>`).join('');
+}
+$('levelTable').addEventListener('input',e=>{
+  const t=e.target, i=t.dataset.l, f=t.dataset.f; if(i===undefined) return;
+  const l=state.key.levels[i];
+  if(f==='label') l.label=t.value;
+  else if(f==='pass') l.pass=t.checked;
+  else { const v=num(t.value); if(isFinite(v)) l[f]=v; }
+  markEdited(); syncThr(); updateComputed();
+});
+function addLevel(){ state.key.levels.push({label:'neu',val:0,min:0,pass:false}); markEdited(); renderAll(); }
+function delLevel(i){ if(state.key.levels.length<=2) return; state.key.levels.splice(i,1); markEdited(); renderAll(); }
+
+/* ---------- Key table ---------- */
+function keyRows(){
+  const ls=sortedLevels();
+  return ls.map((l,i)=>{
+    const from=minPts(l);
+    const to = i===0 ? state.max : minPts(ls[i-1]) - (Number(state.rounding)||0.01);
+    return {label:l.label, val:l.val, min:l.min, from, to:Math.max(from,to), pass:l.pass};
+  });
+}
+function renderKeyTable(){
+  const np = state.key.scale!=='grade';
+  $('keyTableBox').innerHTML = `<div class="hint" style="margin-bottom:6px">${esc(state.key.name||'')} – Maximalpunktzahl ${fmt(state.max)}</div>
+  <table class="grid"><thead><tr><th>Note</th>${np?'<th class="c">NP</th>':''}<th class="c">ab %</th><th class="c">ab Punkte</th><th class="c">Punktebereich</th></tr></thead><tbody>
+  ${keyRows().map(r=>`<tr class="${r.pass?'':'fail'}"><td>${esc(r.label)}</td>${np?`<td class="c">${fmt(r.val)}</td>`:''}<td class="c">${fmt(r.min,1)} %</td><td class="c"><b>${fmt(r.from)}</b></td><td class="c">${fmt(r.from)} – ${fmt(r.to)}</td></tr>`).join('')}
+  </tbody></table>`;
+}
+
+/* ---------- Criteria ---------- */
+function renderCrit(){
+  $('critOn').checked=state.critOn;
+  $('critBox').style.display = state.critOn?'block':'none';
+  $('critTable').tBodies[0].innerHTML = state.criteria.map((c,i)=>`<tr>
+    <td><input data-c="${i}" data-f="name" value="${esc(c.name)}" style="width:100%"></td>
+    <td class="c"><input class="small" data-c="${i}" data-f="weight" value="${fmt(num(c.weight))}"></td>
+    <td class="c"><input class="small" data-c="${i}" data-f="max" value="${fmt(num(c.max))}"></td>
+    <td class="c"><button class="del" onclick="delCrit(${i})">×</button></td></tr>`).join('');
+  critWarn();
+}
+function critWarn(){
+  const s=state.criteria.reduce((a,c)=>a+(num(c.weight)||0),0);
+  $('critWarn').innerHTML = Math.abs(s-100)<0.01 ? `<span class="ok">Summe: 100 % ✓</span>`
+    : `<span class="warn">⚠ Summe der Gewichte: ${fmt(s)} %. Sie sollte 100 % ergeben (bis dahin wird anteilig normiert).</span>`;
+}
+$('critTable').addEventListener('input',e=>{
+  const t=e.target,i=t.dataset.c,f=t.dataset.f; if(i===undefined) return;
+  state.criteria[i][f] = f==='name' ? t.value : t.value;
+  critWarn();
+  if(f==='name') renderStudentHead(); 
+  updateComputed();
+});
+$('critOn').addEventListener('change',e=>{ state.critOn=e.target.checked; renderAll(); });
+function addCrit(){ state.criteria.push({name:'Kriterium '+(state.criteria.length+1),weight:0,max:10}); renderAll(); }
+function delCrit(i){ state.criteria.splice(i,1); state.students.forEach(s=>s.crit&&s.crit.splice(i,1)); renderAll(); }
+function applyCritPreset(p){
+  if(!p) return;
+  if(p==='equal'){ const n=state.criteria.length||1; state.criteria.forEach(c=>c.weight=Math.round(10000/n)/100); }
+  else { state.criteria = CRIT_PRESETS[p].map(([name,weight,max])=>({name,weight,max})); state.students.forEach(s=>s.crit=[]); }
+  state.critOn=true; renderAll();
+}
+
+/* ---------- Students ---------- */
+function renderStudentHead(){
+  const crit = state.critOn ? state.criteria.map(c=>`<th class="c">${esc(c.name)}<br><span class="hint">/${fmt(num(c.max))} · ${fmt(num(c.weight))} %</span></th>`).join('') : '';
+  $('stuTable').tHead.innerHTML = `<tr><th class="c">Nr.</th><th>Name</th>${crit}<th class="c">Punkte<br><span class="hint">/${fmt(state.max)}</span></th><th class="c">%</th><th class="c">Note</th><th style="min-width:200px">Kommentar</th><th class="noprint"></th></tr>`;
+}
+function renderStudents(){
+  renderStudentHead();
+  $('stuTable').tBodies[0].innerHTML = state.students.map((s,i)=>{
+    const crit = state.critOn ? state.criteria.map((c,j)=>`<td class="c"><input class="small" data-s="${i}
