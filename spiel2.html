@@ -1,0 +1,334 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Umriss – Länder nachzeichnen</title>
+<style>
+  :root { --a:#22e3ff; --b:#ff3fa4; --ok:#4dff9a; --bg:#0a0b14; --panel:rgba(16,18,34,.92); }
+  * { box-sizing:border-box; margin:0; padding:0; }
+  html,body { height:100%; background:var(--bg); color:#e8eaf6;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif; overflow:hidden; user-select:none; }
+  canvas { display:block; width:100vw; height:100vh; cursor:crosshair; touch-action:none; }
+
+  #hud { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between;
+    align-items:center; padding:14px 20px; pointer-events:none; font-weight:600; }
+  #country { font-size:1.6rem; letter-spacing:1px; text-align:center; flex:1; }
+  #hud .side { min-width:150px; }
+  #hint { position:fixed; bottom:22px; left:50%; transform:translateX(-50%);
+    color:#8a8fb0; font-size:.95rem; pointer-events:none; text-align:center; }
+  #timer { position:fixed; top:60px; left:50%; transform:translateX(-50%);
+    font-size:3rem; font-weight:800; color:var(--b); pointer-events:none; }
+
+  .overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center;
+    background:rgba(5,6,12,.55); backdrop-filter:blur(6px); opacity:0; pointer-events:none;
+    transition:opacity .3s; z-index:10; }
+  .overlay.show { opacity:1; pointer-events:auto; }
+  .overlay.light { background:transparent; backdrop-filter:none; align-items:flex-end; padding-bottom:30px; }
+  .panel { background:var(--panel); border:1px solid rgba(255,255,255,.1); border-radius:18px;
+    padding:30px 36px; max-width:460px; width:92%; text-align:center;
+    box-shadow:0 20px 60px rgba(0,0,0,.6); transform:translateY(20px); transition:transform .3s; }
+  .overlay.show .panel { transform:none; }
+  h1 { font-size:2.6rem; letter-spacing:5px; margin-bottom:8px;
+    background:linear-gradient(90deg,var(--a),var(--b)); -webkit-background-clip:text;
+    background-clip:text; color:transparent; }
+  h2 { font-size:1.6rem; margin-bottom:8px; }
+  p { color:#b8bcd8; line-height:1.55; margin-bottom:12px; }
+  .btn { display:block; width:100%; margin-top:10px; padding:13px; border:none; border-radius:10px;
+    font-size:1rem; font-weight:700; cursor:pointer; color:#0a0b14;
+    background:linear-gradient(90deg,var(--a),var(--b)); transition:transform .15s; }
+  .btn:hover { transform:translateY(-2px); }
+  .btn.ghost { background:transparent; color:#e8eaf6; border:1px solid rgba(255,255,255,.25); }
+  .row { display:flex; gap:10px; } .row .btn { flex:1; }
+  .mode.active { outline:2px solid #fff; }
+  .big { font-size:4rem; font-weight:900; margin:6px 0; }
+  .stats { display:flex; justify-content:space-around; margin:14px 0; }
+  .stats div { font-size:.85rem; color:#8a8fb0; } .stats b { display:block; font-size:1.5rem; color:#fff; }
+  .legend { font-size:.85rem; color:#8a8fb0; margin-bottom:6px; }
+  .legend span { display:inline-block; width:10px; height:10px; border-radius:2px; margin:0 4px 0 10px; }
+  #roundList { text-align:left; margin:10px 0; max-height:180px; overflow:auto; }
+  #roundList div { display:flex; justify-content:space-between; padding:6px 0;
+    border-bottom:1px solid rgba(255,255,255,.06); }
+  #loading { color:#8a8fb0; }
+</style>
+</head>
+<body>
+<canvas id="cv"></canvas>
+
+<div id="hud">
+  <div class="side">Runde <span id="round">1</span>/5</div>
+  <div id="country"></div>
+  <div class="side" style="text-align:right">Ø <span id="avg">–</span></div>
+</div>
+<div id="timer"></div>
+<div id="hint"></div>
+
+<!-- Start -->
+<div class="overlay show" id="ovStart">
+  <div class="panel">
+    <h1>UMRISS</h1>
+    <p>Zeichne den Umriss des Landes in einem Zug nach. Je genauer, desto mehr Prozent.</p>
+    <div class="row">
+      <button class="btn ghost mode active" data-mode="trace">Nachzeichnen</button>
+      <button class="btn ghost mode" data-mode="memory">Gedächtnis</button>
+    </div>
+    <p style="margin-top:12px;font-size:.9rem" id="modeDesc">Der Umriss ist blass sichtbar.</p>
+    <div class="stats"><div>Bestwert<b id="best">–</b></div></div>
+    <button class="btn" id="btnStart" disabled>Lade Länderdaten…</button>
+    <p id="loading" style="margin-top:10px;font-size:.8rem"></p>
+  </div>
+</div>
+
+<!-- Ergebnis einer Runde -->
+<div class="overlay light" id="ovResult">
+  <div class="panel">
+    <div class="legend"><span style="background:var(--ok)"></span>Treffer
+      <span style="background:var(--b)"></span>Zu viel <span style="background:var(--a)"></span>Fehlt</div>
+    <div class="big" id="pct">0%</div>
+    <p id="verdict"></p>
+    <div class="row">
+      <button class="btn ghost" id="btnRetry">Nochmal (gleiches Land)</button>
+      <button class="btn" id="btnNext">Weiter</button>
+    </div>
+  </div>
+</div>
+
+<!-- Endstand -->
+<div class="overlay" id="ovEnd">
+  <div class="panel">
+    <h2>Endergebnis</h2>
+    <div class="big" id="endPct">0%</div>
+    <p id="endMsg"></p>
+    <div id="roundList"></div>
+    <button class="btn" id="btnAgain">Neues Spiel</button>
+    <button class="btn ghost" id="btnMenu">Hauptmenü</button>
+  </div>
+</div>
+
+<script>
+(() => {
+const DATA_URL = 'https://raw.githubusercontent.com/johan/world.geo.json/master/countries.geo.json';
+const ROUNDS = 5;
+// Deutsche Namen für bekannte Länder (sonst englischer Name)
+const DE = {"Germany":"Deutschland","France":"Frankreich","Italy":"Italien","Spain":"Spanien","Portugal":"Portugal",
+"Austria":"Österreich","Switzerland":"Schweiz","Poland":"Polen","Czech Republic":"Tschechien","Netherlands":"Niederlande",
+"Belgium":"Belgien","United Kingdom":"Vereinigtes Königreich","Ireland":"Irland","Norway":"Norwegen","Sweden":"Schweden",
+"Finland":"Finnland","Denmark":"Dänemark","Greece":"Griechenland","Turkey":"Türkei","Russia":"Russland","Ukraine":"Ukraine",
+"Hungary":"Ungarn","Romania":"Rumänien","Bulgaria":"Bulgarien","Croatia":"Kroatien","United States of America":"USA",
+"Canada":"Kanada","Mexico":"Mexiko","Brazil":"Brasilien","Argentina":"Argentinien","Chile":"Chile","Peru":"Peru",
+"Colombia":"Kolumbien","Australia":"Australien","China":"China","India":"Indien","Japan":"Japan","Egypt":"Ägypten",
+"South Africa":"Südafrika","Morocco":"Marokko","Algeria":"Algerien","Libya":"Libyen","Nigeria":"Nigeria","Kenya":"Kenia",
+"Ethiopia":"Äthiopien","Saudi Arabia":"Saudi-Arabien","Iran":"Iran","Iraq":"Irak","Pakistan":"Pakistan",
+"Afghanistan":"Afghanistan","Kazakhstan":"Kasachstan","Mongolia":"Mongolei","Thailand":"Thailand","Vietnam":"Vietnam",
+"Madagascar":"Madagaskar","New Zealand":"Neuseeland","Iceland":"Island","Cuba":"Kuba","Sri Lanka":"Sri Lanka",
+"South Korea":"Südkorea","North Korea":"Nordkorea","Belarus":"Belarus","Slovakia":"Slowakei","Serbia":"Serbien",
+"Somalia":"Somalia","Tunisia":"Tunesien","Venezuela":"Venezuela","Bolivia":"Bolivien","Indonesia":"Indonesien"};
+const EXCLUDE = new Set(['Antarctica','Fiji','French Southern and Antarctic Lands']);
+
+const cv = document.getElementById('cv'), ctx = cv.getContext('2d');
+const off = document.createElement('canvas'), octx = off.getContext('2d', { willReadFrequently:true });
+const $ = id => document.getElementById(id);
+let W, H, DPR;
+
+let countries = [], mode = 'trace', state = 'menu';
+let round = 0, results = [], current = null, shape = null, stroke = [], drawing = false;
+let showOutline = true, resultImg = null, memTimer = null;
+let best = localStorage.getItem('umriss_best_' + mode);
+
+function resize() {
+  DPR = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight;
+  cv.width = W * DPR; cv.height = H * DPR; ctx.setTransform(DPR,0,0,DPR,0,0);
+  if (current) { shape = project(current.ring); resultImg = null; if (state === 'result') evaluate(); }
+}
+addEventListener('resize', resize); resize();
+
+// ---------- Daten laden ----------
+function ringArea(r) { let a=0; for (let i=0,j=r.length-1;i<r.length;j=i++) a += (r[j][0]+r[i][0])*(r[j][1]-r[i][1]); return Math.abs(a/2); }
+fetch(DATA_URL).then(r => r.json()).then(geo => {
+  geo.features.forEach(f => {
+    const name = f.properties.name; if (EXCLUDE.has(name)) return;
+    const g = f.geometry; if (!g) return;
+    const polys = g.type === 'Polygon' ? [g.coordinates] : g.coordinates;
+    // größte Fläche (Festland) verwenden
+    let ring = null, maxA = 0;
+    polys.forEach(p => { const a = ringArea(p[0]); if (a > maxA) { maxA = a; ring = p[0]; } });
+    if (ring && ring.length >= 12 && maxA > 0.8) countries.push({ name: DE[name] || name, ring });
+  });
+  $('btnStart').disabled = false; $('btnStart').textContent = 'Spiel starten';
+  $('loading').textContent = countries.length + ' Länder geladen';
+}).catch(() => {
+  $('btnStart').textContent = 'Fehler beim Laden';
+  $('loading').textContent = 'Für die Länderdaten wird eine Internetverbindung benötigt.';
+});
+
+// ---------- Projektion ----------
+function project(ring) {
+  let minX=1e9,maxX=-1e9,minY=1e9,maxY=-1e9, latSum=0;
+  ring.forEach(([, la]) => latSum += la);
+  const k = Math.cos((latSum / ring.length) * Math.PI / 180);
+  const pts = ring.map(([lo, la]) => [lo * k, -la]);
+  pts.forEach(([x,y]) => { minX=Math.min(minX,x); maxX=Math.max(maxX,x); minY=Math.min(minY,y); maxY=Math.max(maxY,y); });
+  const availW = W * 0.8, availH = (H - 170) * 0.9;
+  const s = Math.min(availW / (maxX-minX), availH / (maxY-minY));
+  const ox = (W - (maxX-minX)*s) / 2, oy = 80 + ((H-170) - (maxY-minY)*s) / 2;
+  return pts.map(([x,y]) => [ox + (x-minX)*s, oy + (y-minY)*s]);
+}
+
+// ---------- Overlays ----------
+const OVS = ['ovStart','ovResult','ovEnd'];
+function show(id) { OVS.forEach(o => $(o).classList.toggle('show', o === id)); }
+
+document.querySelectorAll('.mode').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.mode').forEach(x => x.classList.remove('active'));
+  b.classList.add('active'); mode = b.dataset.mode;
+  $('modeDesc').textContent = mode === 'trace' ? 'Der Umriss ist blass sichtbar.'
+    : 'Du siehst den Umriss 3 Sekunden lang, dann musst du ihn aus dem Gedächtnis zeichnen.';
+  updateBest();
+});
+function updateBest() { best = localStorage.getItem('umriss_best_' + mode); $('best').textContent = best ? best + '%' : '–'; }
+updateBest();
+
+$('btnStart').onclick = newGame;
+$('btnAgain').onclick = newGame;
+$('btnMenu').onclick = () => { state='menu'; current=null; $('country').textContent=''; $('hint').textContent=''; updateBest(); show('ovStart'); };
+$('btnRetry').onclick = () => { results.pop(); startRound(current); };
+$('btnNext').onclick = () => round >= ROUNDS ? endGame() : startRound(pick());
+
+let used = new Set();
+function pick() {
+  let c; do { c = countries[Math.floor(Math.random()*countries.length)]; } while (used.has(c.name) && used.size < countries.length);
+  used.add(c.name); return c;
+}
+function newGame() { round = 0; results = []; used.clear(); $('avg').textContent = '–'; startRound(pick()); }
+
+function startRound(c) {
+  if (!results.length || results.length < round) {} // no-op
+  round = results.length + 1;
+  current = c; shape = project(c.ring); stroke = []; resultImg = null;
+  $('round').textContent = round; $('country').textContent = c.name;
+  show(null); clearInterval(memTimer); $('timer').textContent = '';
+  if (mode === 'memory') {
+    state = 'memorize'; showOutline = true; let t = 3;
+    $('timer').textContent = t; $('hint').textContent = 'Präge dir die Form ein…';
+    memTimer = setInterval(() => {
+      t--; $('timer').textContent = t || '';
+      if (t <= 0) { clearInterval(memTimer); showOutline = false; state = 'draw';
+        $('hint').textContent = 'Zeichne jetzt aus dem Gedächtnis (in einem Zug)'; }
+    }, 1000);
+  } else {
+    state = 'draw'; showOutline = true;
+    $('hint').textContent = 'Fahre den Umriss in einem Zug nach. Loslassen schließt die Form.';
+  }
+}
+
+function endGame() {
+  state = 'end';
+  const avg = Math.round(results.reduce((a,r) => a + r.p, 0) / results.length);
+  $('endPct').textContent = avg + '%';
+  const prev = +(localStorage.getItem('umriss_best_' + mode) || 0);
+  if (avg > prev) { localStorage.setItem('umriss_best_' + mode, avg); $('endMsg').textContent = '🏆 Neuer Bestwert!'; }
+  else $('endMsg').textContent = 'Bestwert: ' + prev + '%';
+  $('roundList').innerHTML = results.map(r => `<div><span>${r.name}</span><b>${r.p}%</b></div>`).join('');
+  show('ovEnd');
+}
+
+// ---------- Zeichnen per Maus/Touch ----------
+function pos(e) { const t = e.touches ? e.touches[0] : e; return [t.clientX, t.clientY]; }
+function down(e) { if (state !== 'draw') return; e.preventDefault(); drawing = true; stroke = [pos(e)]; }
+function move(e) {
+  if (!drawing) return; e.preventDefault();
+  const p = pos(e), l = stroke[stroke.length-1];
+  if (Math.hypot(p[0]-l[0], p[1]-l[1]) > 2) stroke.push(p);
+}
+function up() {
+  if (!drawing) return; drawing = false;
+  if (stroke.length < 10) { stroke = []; return; }
+  evaluate();
+}
+cv.addEventListener('mousedown', down); addEventListener('mousemove', move); addEventListener('mouseup', up);
+cv.addEventListener('touchstart', down, {passive:false}); cv.addEventListener('touchmove', move, {passive:false});
+addEventListener('touchend', up);
+
+// ---------- Auswertung: Flächenübereinstimmung (Intersection over Union) ----------
+function evaluate() {
+  const S = 4; // Auflösung reduzieren
+  off.width = Math.ceil(W / S); off.height = Math.ceil(H / S);
+  const fill = (pts, col) => {
+    octx.beginPath(); pts.forEach(([x,y],i) => octx[i?'lineTo':'moveTo'](x/S, y/S));
+    octx.closePath(); octx.fillStyle = col; octx.fill('evenodd');
+  };
+  octx.clearRect(0,0,off.width,off.height);
+  octx.globalCompositeOperation = 'lighter';
+  fill(shape, 'rgb(255,0,0)'); fill(stroke, 'rgb(0,255,0)');
+  const img = octx.getImageData(0,0,off.width,off.height), d = img.data;
+  let inter=0, uni=0;
+  for (let i=0;i<d.length;i+=4) {
+    const a = d[i] > 127, b = d[i+1] > 127;
+    if (a || b) uni++; if (a && b) inter++;
+    // Farben für die Ergebnisanzeige
+    if (a && b) { d[i]=77; d[i+1]=255; d[i+2]=154; d[i+3]=150; }
+    else if (b) { d[i]=255; d[i+1]=63; d[i+2]=164; d[i+3]=130; }
+    else if (a) { d[i]=34; d[i+1]=227; d[i+2]=255; d[i+3]=110; }
+    else d[i+3]=0;
+  }
+  octx.globalCompositeOperation = 'source-over';
+  octx.putImageData(img,0,0);
+  resultImg = off;
+  const p = uni ? Math.round(inter / uni * 1000) / 10 : 0;
+
+  if (state === 'draw') {
+    results.push({ name: current.name, p });
+    $('avg').textContent = Math.round(results.reduce((a,r)=>a+r.p,0)/results.length) + '%';
+  }
+  state = 'result'; showOutline = true; $('hint').textContent = '';
+  animatePct(p);
+  $('verdict').textContent = p >= 90 ? 'Kartograf-Niveau! 🗺️' : p >= 75 ? 'Sehr stark!' :
+    p >= 55 ? 'Gut erkennbar.' : p >= 35 ? 'Grobe Richtung stimmt.' : 'Abstrakte Kunst 🎨';
+  $('btnNext').textContent = round >= ROUNDS ? 'Endergebnis' : 'Weiter';
+  show('ovResult');
+}
+function animatePct(target) {
+  let v = 0; const el = $('pct');
+  const step = () => { v = Math.min(target, v + Math.max(0.5, target/40)); el.textContent = v.toFixed(1) + '%';
+    el.style.color = v >= 75 ? 'var(--ok)' : v >= 45 ? '#ffd84d' : 'var(--b)';
+    if (v < target) requestAnimationFrame(step); };
+  step();
+}
+
+// ---------- Render-Loop ----------
+function path(pts, close) { ctx.beginPath(); pts.forEach(([x,y],i) => ctx[i?'lineTo':'moveTo'](x,y)); if (close) ctx.closePath(); }
+function render() {
+  ctx.fillStyle = '#0a0b14'; ctx.fillRect(0,0,W,H);
+  // Raster
+  ctx.strokeStyle = 'rgba(255,255,255,.04)'; ctx.lineWidth = 1;
+  for (let x=0;x<W;x+=40) { ctx.beginPath(); ctx.moveTo(x,0); ctx.lineTo(x,H); ctx.stroke(); }
+  for (let y=0;y<H;y+=40) { ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke(); }
+
+  if (shape) {
+    if (state === 'result' && resultImg) {
+      ctx.imageSmoothingEnabled = true; ctx.drawImage(resultImg, 0, 0, W, H);
+    }
+    if (showOutline) {
+      path(shape, true);
+      const strong = state === 'memorize' || state === 'result';
+      ctx.strokeStyle = strong ? 'rgba(34,227,255,.9)' : 'rgba(34,227,255,.3)';
+      ctx.lineWidth = strong ? 2.5 : 2;
+      if (state === 'draw') ctx.setLineDash([6,6]);
+      ctx.stroke(); ctx.setLineDash([]);
+    }
+    if (stroke.length > 1) {
+      path(stroke, !drawing);
+      ctx.strokeStyle = '#ff3fa4'; ctx.lineWidth = 3; ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      ctx.shadowBlur = 12; ctx.shadowColor = '#ff3fa4'; ctx.stroke(); ctx.shadowBlur = 0;
+      if (drawing) { // Startpunkt markieren, damit man weiß, wo man schließen muss
+        ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(stroke[0][0], stroke[0][1], 6, 0, Math.PI*2); ctx.fill();
+      }
+    }
+  }
+  requestAnimationFrame(render);
+}
+render();
+})();
+</script>
+</body>
+</html>
