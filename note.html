@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Notenrechner – Punkte in Noten umrechnen</title>
+<style>
+  /* ===== Grundlayout & Farbvariablen ===== */
+  :root {
+    --primary: #2b5876;
+    --primary-light: #4e8cb5;
+    --bg: #eef2f7;
+    --card: #ffffff;
+    --text: #1f2d3d;
+    --muted: #6b7a8c;
+    --radius: 14px;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+    background: linear-gradient(135deg, #dfe9f3 0%, #f5f7fa 100%);
+    color: var(--text);
+    min-height: 100vh;
+  }
+  header {
+    background: linear-gradient(90deg, var(--primary), var(--primary-light));
+    color: #fff;
+    padding: 28px 20px;
+    text-align: center;
+    box-shadow: 0 4px 14px rgba(0,0,0,.15);
+  }
+  header h1 { margin: 0; font-size: 1.9rem; letter-spacing: .5px; }
+  header p  { margin: 6px 0 0; opacity: .85; }
+
+  main { max-width: 1250px; margin: 28px auto; padding: 0 16px; }
+
+  /* ===== Karten ===== */
+  .card {
+    background: var(--card);
+    border-radius: var(--radius);
+    box-shadow: 0 6px 20px rgba(43,88,118,.10);
+    padding: 22px 26px;
+    margin-bottom: 22px;
+  }
+  .card h2 {
+    margin: 0 0 16px;
+    font-size: 1.15rem;
+    color: var(--primary);
+    border-bottom: 2px solid #e3eaf2;
+    padding-bottom: 8px;
+  }
+
+  /* ===== Eingabebereich ===== */
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; }
+  label { display: block; font-weight: 600; margin-bottom: 6px; font-size: .92rem; }
+  input[type=number], select {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1.5px solid #cdd8e4;
+    border-radius: 9px;
+    font-size: 1rem;
+    transition: border-color .2s, box-shadow .2s;
+  }
+  input[type=number]:focus, select:focus {
+    outline: none;
+    border-color: var(--primary-light);
+    box-shadow: 0 0 0 3px rgba(78,140,181,.2);
+  }
+  .hint { font-size: .8rem; color: var(--muted); margin-top: 5px; }
+
+  /* Auswahl der Schlüssel als „Kacheln“ */
+  .keys { display: flex; gap: 10px; flex-wrap: wrap; }
+  .keys input { display: none; }
+  .keys label {
+    flex: 1;
+    min-width: 150px;
+    text-align: center;
+    padding: 12px;
+    border: 2px solid #cdd8e4;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: 600;
+    transition: all .2s;
+    margin: 0;
+  }
+  .keys input:checked + label {
+    background: var(--primary);
+    border-color: var(--primary);
+    color: #fff;
+    box-shadow: 0 4px 10px rgba(43,88,118,.3);
+  }
+
+  /* Schieberegler für die 4+ */
+  .slider-row { display: flex; align-items: center; gap: 14px; }
+  input[type=range] { flex: 1; accent-color: var(--primary); }
+  .slider-row input[type=number] { width: 95px; }
+
+  /* Eingabefelder für den eigenen Schlüssel */
+  #customBox { display: none; margin-top: 18px; }
+  .custom-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(90px, 1fr)); gap: 10px; }
+  .custom-grid div { text-align: center; }
+  .custom-grid span { display: block; font-weight: 700; margin-bottom: 4px; }
+
+  /* ===== Ergebnistabelle (horizontal) ===== */
+  .table-wrap { overflow-x: auto; }
+  table.result { border-collapse: collapse; width: 100%; font-size: .9rem; }
+  table.result th, table.result td {
+    border: 1px solid #b9c6d3;
+    padding: 8px 6px;
+    text-align: center;
+    white-space: nowrap;
+  }
+  table.result th.rowhead {
+    background: var(--primary);
+    color: #fff;
+    text-align: left;
+    padding-left: 12px;
+  }
+
+  /* ===== Buttons ===== */
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; margin-top: 18px; }
+  button {
+    padding: 11px 20px;
+    border: none;
+    border-radius: 9px;
+    font-size: .95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform .1s, box-shadow .2s;
+  }
+  button:active { transform: scale(.97); }
+  .btn-primary { background: var(--primary); color: #fff; }
+  .btn-primary:hover { box-shadow: 0 4px 12px rgba(43,88,118,.35); }
+  .btn-secondary { background: #e3eaf2; color: var(--primary); }
+
+  /* Kurze Rückmeldung nach dem Kopieren */
+  #toast {
+    position: fixed; bottom: 24px; left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    background: #2e7d32; color: #fff;
+    padding: 12px 22px; border-radius: 10px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.2);
+    transition: transform .3s;
+  }
+  #toast.show { transform: translateX(-50%) translateY(0); }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>📊 Notenrechner</h1>
+  <p>Punkte einer Klassenarbeit in Noten umrechnen</p>
+</header>
+
+<main>
+  <!-- ===== Einstellungen ===== -->
+  <section class="card">
+    <h2>1. Einstellungen</h2>
+    <div class="grid">
+      <div>
+        <label for="total">Erreichbare Gesamtpunktzahl</label>
+        <input type="number" id="total" value="120" min="1" step="0.5">
+      </div>
+      <div>
+        <label for="step">Punkteschritte</label>
+        <select id="step">
+          <option value="1">Ganze Punkte</option>
+          <option value="0.5">Halbe Punkte</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===== Auswahl des Schlüssels ===== -->
+  <section class="card">
+    <h2>2. Notenschlüssel</h2>
+    <div class="keys">
+      <input type="radio" name="key" id="kKMK" value="kmk" checked>
+      <label for="kKMK">NRW-Abitur / KMK</label>
+      <input type="radio" name="key" id="kIHK" value="ihk">
+      <label for="kIHK">IHK-Schlüssel</label>
+      <input type="radio" name="key" id="kCustom" value="custom">
+      <label for="kCustom">Eigene Gewichtung</label>
+    </div>
+
+    <!-- Eingabefelder für eigene Prozentgrenzen (Mindestwert je Note) -->
+    <div id="customBox">
+      <p class="hint">Mindestprozentsatz je Notenstufe eingeben (absteigend). Die 6 beginnt immer bei 0 %.</p>
+      <div class="custom-grid" id="customGrid"></div>
+    </div>
+  </section>
+
+  <!-- ===== Justierung der 4+ ===== -->
+  <section class="card">
+    <h2>3. Grenze für die 4+ justieren</h2>
+    <div class="slider-row">
+      <input type="range" id="fourPlusRange" min="20" max="80" step="0.5">
+      <input type="number" id="fourPlusNum" min="20" max="80" step="0.5">
+      <strong>%</strong>
+    </div>
+    <p class="hint">Alle übrigen Grenzen werden anteilig mitverschoben (darüber zwischen 4+ und 100 %, darunter zwischen 0 % und 4+).</p>
+  </section>
+
+  <!-- ===== Ergebnis ===== -->
+  <section class="card">
+    <h2>4. Notentabelle</h2>
+    <div class="table-wrap" id="tableWrap"></div>
+    <div class="actions">
+      <button class="btn-primary" id="copyBtn">📋 Für Word kopieren</button>
+      <button class="btn-secondary" id="docBtn">💾 Als Word-Datei speichern</button>
+    </div>
+  </section>
+</main>
+
+<div id="toast">Tabelle kopiert – jetzt in Word mit Strg+V einfügen</div>
+
+<script>
+/* =========================================================
+   KONSTANTEN
+   ========================================================= */
+
+// Die 16 Notenstufen von 1+ bis 6 (Index 9 = 4+)
+const GRADES = ["1+","1","1-","2+","2","2-","3+","3","3-","4+","4","4-","5+","5","5-","6"];
+const IDX_4PLUS = 9;
+
+// Hintergrundfarbe je Hauptnote (grün → rot), auch für den Word-Export
+const COLORS = { "1":"#c8e6c9", "2":"#dcedc8", "3":"#fff9c4", "4":"#ffe0b2", "5":"#ffccbc", "6":"#ef9a9a" };
+
+// NRW-Abitur/KMK: Mindestprozente für 15 … 0 Notenpunkte
+const KMK = [95,90,85,80,75,70,65,60,55,50,45,40,33,27,20,0];
+
+/**
+ * IHK-Schlüssel: Die Hauptnoten 1–5 werden in je drei gleich große
+ * Tendenzbereiche (+ / glatt / −) geteilt. Die 6 umfasst 0–29 %.
+ */
+function buildIHK() {
+  // [Untergrenze, Obergrenze] der Hauptnoten 1 bis 5 in Prozent
+  const ranges = [[92,100],[81,92],[67,81],[50,67],[30,50]];
+  const result = [];
+  ranges.forEach(([low, high]) => {
+    const w = (high - low) / 3;
+    result.push(round1(low + 2*w), round1(low + w), low); // +, glatt, −
+  });
+  result.push(0); // Note 6
+  return result;
+}
+const IHK = buildIHK();
+
+// Startwerte für den eigenen Schlüssel (Kopie der KMK-Werte)
+let customKey = [...KMK];
+
+/* =========================================================
+   HILFSFUNKTIONEN
+   ========================================================= */
+
+// Auf eine Nachkommastelle runden
+function round1(x) { return Math.round(x * 10) / 10; }
+
+// Zahl deutsch formatieren (Komma statt Punkt)
+function fmt(x) { return x.toLocaleString("de-DE", { maximumFractionDigits: 1 }); }
+
+// Kurzschreibweise für document.getElementById
+const $ = id => document.getElementById(id);
+
+// Liefert die Prozentgrenzen des aktuell gewählten Schlüssels
+function getBaseKey() {
+  const k = document.querySelector('input[name="key"]:checked').value;
+  if (k === "ihk")    return IHK;
+  if (k === "custom") return customKey;
+  return KMK;
+}
+
+/**
+ * Verschiebt alle Grenzen so, dass die 4+ bei newFour liegt.
+ * Werte über der 4+ werden linear von [alt4+,100] auf [neu4+,100]
+ * abgebildet, Werte darunter von [0,alt4+] auf [0,neu4+].
+ */
+function adjustKey(base, newFour) {
+  const oldFour = base[IDX_4PLUS];
+  return base.map((p, i) => {
+    if (i === IDX_4PLUS) return newFour;
+    if (i < IDX_4PLUS) return round1(newFour + (p - oldFour) * (100 - newFour) / (100 - oldFour));
+    return round1(oldFour === 0 ? 0 : p * newFour / oldFour);
+  });
+}
+
+/**
+ * Rechnet Prozentgrenzen in Punktebereiche um.
+ * Die Mindestpunktzahl wird auf den nächsten zulässigen Schritt
+ * aufgerundet, damit eine Note nie zu leicht erreicht wird.
+ */
+function computeRows() {
+  const total = Math.max(parseFloat($("total").value) || 0, 0);
+  const step  = parseFloat($("step").value);
+  const four  = parseFloat($("fourPlusNum").value);
+  const perc  = adjustKey(getBaseKey(), four);
+
+  // Mindestpunkte je Note
+  const mins = perc.map(p => Math.ceil((p / 100 * total) / step - 1e-9) * step);
+
+  return GRADES.map((g, i) => {
+    const min = mins[i];
+    // Obergrenze = Mindestwert der nächstbesseren Note minus ein Schritt
+    const max = i === 0 ? total : mins[i - 1] - step;
+    return { grade: g, pct: perc[i], min, max, valid: max >= min };
+  });
+}
+
+/* =========================================================
+   TABELLE ERZEUGEN
+   ========================================================= */
+
+/**
+ * Baut die horizontale Tabelle mit Inline-Styles.
+ * Inline-Styles sind nötig, damit Word die Formatierung übernimmt.
+ */
+function buildTableHTML(rows) {
+  const total = $("total").value;
+  const cell = "border:1px solid #8a9bb0;padding:5px 4px;text-align:center;font-family:Calibri,Arial,sans-serif;font-size:10pt;";
+  const head = "border:1px solid #8a9bb0;padding:5px 8px;text-align:left;font-family:Calibri,Arial,sans-serif;font-size:10pt;background:#2b5876;color:#ffffff;font-weight:bold;";
+
+  // Hintergrundfarbe aus der Hauptnote (erstes Zeichen) ableiten
+  const bg = r => `background:${COLORS[r.grade[0]]};`;
+
+  let html = `<table class="result" style="border-collapse:collapse;width:100%;">`;
+
+  // Zeile 1: Noten
+  html += `<tr><th class="rowhead" style="${head}">Note</th>`;
+  rows.forEach(r => html += `<td style="${cell}${bg(r)}font-weight:bold;font-size:11pt;">${r.grade}</td>`);
+  html += `</tr>`;
+
+  // Zeile 2: Punktebereich
+  html += `<tr><th class="rowhead" style="${head}">Punkte (von ${fmt(+total)})</th>`;
+  rows.forEach(r => {
+    const txt = r.valid ? (r.min === r.max ? fmt(r.min) : `${fmt(r.max)}–${fmt(r.min)}`) : "–";
+    html += `<td style="${cell}${bg(r)}">${txt}</td>`;
+  });
+  html += `</tr>`;
+
+  // Zeile 3: Prozentgrenze
+  html += `<tr><th class="rowhead" style="${head}">ab %</th>`;
+  rows.forEach(r => html += `<td style="${cell}${bg(r)}color:#444;">${fmt(r.pct)}</td>`);
+  html += `</tr></table>`;
+
+  return html;
+}
+
+// Tabelle neu berechnen und anzeigen
+function render() {
+  $("tableWrap").innerHTML = buildTableHTML(computeRows());
+}
+
+/* =========================================================
+   EIGENER SCHLÜSSEL
+   ========================================================= */
+
+// Erzeugt die 15 Eingabefelder (die 6 ist fest 0 %)
+function buildCustomGrid() {
+  const grid = $("customGrid");
+  grid.innerHTML = "";
+  GRADES.slice(0, 15).forEach((g, i) => {
+    const d = document.createElement("div");
+    d.innerHTML = `<span>${g}</span><input type="number" min="0" max="100" step="0.5" value="${customKey[i]}" data-i="${i}">`;
+    grid.appendChild(d);
+  });
+  // Bei Änderung Wert übernehmen, 4+-Regler zurücksetzen und neu rechnen
+  grid.querySelectorAll("input").forEach(inp => {
+    inp.addEventListener("input", e => {
+      customKey[+e.target.dataset.i] = parseFloat(e.target.value) || 0;
+      syncFourPlus(customKey[IDX_4PLUS]);
+      render();
+    });
+  });
+}
+
+/* =========================================================
+   STEUERUNG DER 4+
+   ========================================================= */
+
+// Regler und Zahlenfeld auf denselben Wert setzen
+function syncFourPlus(v) {
+  $("fourPlusRange").value = v;
+  $("fourPlusNum").value = v;
+}
+
+$("fourPlusRange").addEventListener("input", e => { $("fourPlusNum").value = e.target.value; render(); });
+$("fourPlusNum").addEventListener("input", e => { $("fourPlusRange").value = e.target.value; render(); });
+
+/* =========================================================
+   EVENTS FÜR EINSTELLUNGEN
+   ========================================================= */
+
+$("total").addEventListener("input", render);
+$("step").addEventListener("change", render);
+
+// Beim Wechsel des Schlüssels: 4+ auf dessen Standardwert setzen
+document.querySelectorAll('input[name="key"]').forEach(r => {
+  r.addEventListener("change", () => {
+    $("customBox").style.display = r.value === "custom" && r.checked ? "block" : "none";
+    syncFourPlus(getBaseKey()[IDX_4PLUS]);
+    render();
+  });
+});
+
+/* =========================================================
+   EXPORT NACH WORD
+   ========================================================= */
+
+// Kurze Erfolgsmeldung einblenden
+function toast(msg) {
+  const t = $("toast");
+  t.textContent = msg;
+  t.classList.add("show");
+  setTimeout(() => t.classList.remove("show"), 2500);
+}
+
+/**
+ * Kopiert die Tabelle als HTML in die Zwischenablage.
+ * Word erkennt das HTML-Format und übernimmt Rahmen und Farben.
+ * Fallback für ältere Browser: Markieren + execCommand("copy").
+ */
+$("copyBtn").addEventListener("click", async () => {
+  const html = buildTableHTML(computeRows());
+  const plain = $("tableWrap").innerText;
+  try {
+    await navigator.clipboard.write([
+      new ClipboardItem({
+        "text/html":  new Blob([html],  { type: "text/html" }),
+        "text/plain": new Blob([plain], { type: "text/plain" })
+      })
+    ]);
+  } catch {
+    const range = document.createRange();
+    range.selectNode($("tableWrap"));
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand("copy");
+    sel.removeAllRanges();
+  }
+  toast("Tabelle kopiert – jetzt in Word mit Strg+V einfügen");
+});
+
+/**
+ * Speichert die Tabelle als .doc-Datei (HTML im Word-Format),
+ * im Querformat, damit alle 16 Spalten auf die Seite passen.
+ */
+$("docBtn").addEventListener("click", () => {
+  const doc = `
+    <html xmlns:o="urn:schemas-microsoft-com:office:office"
+          xmlns:w="urn:schemas-microsoft-com:office:word">
+    <head><meta charset="UTF-8">
+      <style>@page { size: 29.7cm 21cm; mso-page-orientation: landscape; margin: 1.5cm; }</style>
+    </head>
+    <body>
+      <h3 style="font-family:Calibri,Arial;">Notenschlüssel (Gesamtpunktzahl: ${$("total").value})</h3>
+      ${buildTableHTML(computeRows())}
+    </body></html>`;
+  const blob = new Blob(["\ufeff", doc], { type: "application/msword" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "Notenschluessel.doc";
+  a.click();
+  URL.revokeObjectURL(a.href);
+  toast("Word-Datei wurde heruntergeladen");
+});
+
+/* =========================================================
+   START
+   ========================================================= */
+buildCustomGrid();
+syncFourPlus(KMK[IDX_4PLUS]);
+render();
+</script>
+</body>
+</html>
