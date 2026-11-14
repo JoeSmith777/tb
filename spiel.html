@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Polaris – Polaritäts-Spiel</title>
+<style>
+  :root {
+    --cyan: #22e3ff;
+    --mag: #ff3fa4;
+    --bg: #0a0b14;
+    --panel: rgba(16, 18, 34, 0.88);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    height: 100%; background: var(--bg); color: #e8eaf6;
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden; user-select: none;
+  }
+  canvas { display: block; width: 100vw; height: 100vh; cursor: none; }
+
+  /* HUD */
+  #hud {
+    position: fixed; top: 0; left: 0; right: 0;
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 14px 20px; pointer-events: none; font-weight: 600;
+    text-shadow: 0 0 8px rgba(0,0,0,.8);
+  }
+  #hud .box { display: flex; gap: 22px; align-items: center; }
+  #lives span { display: inline-block; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--cyan); margin-right: 5px; box-shadow: 0 0 8px var(--cyan); }
+  #lives span.lost { background: #333; box-shadow: none; }
+  #combo { font-size: 1.1rem; transition: transform .1s; }
+  #pauseBtn {
+    pointer-events: auto; background: rgba(255,255,255,.08); color: #fff;
+    border: 1px solid rgba(255,255,255,.2); border-radius: 8px;
+    padding: 6px 12px; cursor: pointer; font-size: .9rem;
+  }
+
+  /* Overlays */
+  .overlay {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(5, 6, 12, 0.6); backdrop-filter: blur(6px);
+    opacity: 0; pointer-events: none; transition: opacity .3s;
+    z-index: 10;
+  }
+  .overlay.show { opacity: 1; pointer-events: auto; }
+  .panel {
+    background: var(--panel); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 18px; padding: 34px 38px; max-width: 440px; width: 90%;
+    text-align: center; box-shadow: 0 20px 60px rgba(0,0,0,.6);
+    transform: translateY(20px) scale(.97); transition: transform .3s;
+  }
+  .overlay.show .panel { transform: none; }
+  h1 {
+    font-size: 2.6rem; letter-spacing: 4px; margin-bottom: 6px;
+    background: linear-gradient(90deg, var(--cyan), var(--mag));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  h2 { font-size: 1.7rem; margin-bottom: 12px; }
+  p { line-height: 1.55; color: #b8bcd8; margin-bottom: 14px; }
+  .btn {
+    display: block; width: 100%; margin-top: 10px; padding: 13px;
+    border: none; border-radius: 10px; font-size: 1rem; font-weight: 700;
+    cursor: pointer; color: #0a0b14;
+    background: linear-gradient(90deg, var(--cyan), var(--mag));
+    transition: transform .15s, filter .15s;
+  }
+  .btn:hover { transform: translateY(-2px); filter: brightness(1.1); }
+  .btn.ghost { background: transparent; color: #e8eaf6; border: 1px solid rgba(255,255,255,.25); }
+  .stats { display: flex; justify-content: space-around; margin: 18px 0; }
+  .stats div { font-size: .85rem; color: #8a8fb0; }
+  .stats b { display: block; font-size: 1.6rem; color: #fff; }
+  ul.help { text-align: left; list-style: none; margin: 10px 0 16px; }
+  ul.help li { padding: 7px 0; border-bottom: 1px solid rgba(255,255,255,.06); color: #c4c8e4; }
+  kbd {
+    background: rgba(255,255,255,.12); border-radius: 5px; padding: 2px 7px;
+    font-family: inherit; font-size: .85rem;
+  }
+  .c { color: var(--cyan); font-weight: 700; }
+  .m { color: var(--mag); font-weight: 700; }
+
+  /* Toast */
+  #toast {
+    position: fixed; top: 38%; left: 50%; transform: translate(-50%, -50%);
+    font-size: 2rem; font-weight: 800; pointer-events: none; opacity: 0;
+    transition: opacity .4s, transform .4s; letter-spacing: 2px;
+  }
+  #toast.show { opacity: 1; transform: translate(-50%, -70%); }
+</style>
+</head>
+<body>
+
+<canvas id="game"></canvas>
+
+<div id="hud">
+  <div class="box">
+    <div>Punkte: <span id="score">0</span></div>
+    <div id="combo">x1</div>
+  </div>
+  <div class="box">
+    <div>Level <span id="level">1</span></div>
+    <div id="lives"></div>
+    <button id="pauseBtn">❚❚</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<!-- Start-Overlay -->
+<div class="overlay show" id="ovStart">
+  <div class="panel">
+    <h1>POLARIS</h1>
+    <p>Wechsle deine Polarität. Zieh Gleiches an, stoß Fremdes ab.</p>
+    <div class="stats"><div>Highscore<b id="hsStart">0</b></div></div>
+    <button class="btn" id="btnStart">Spiel starten</button>
+    <button class="btn ghost" id="btnHelp">Anleitung</button>
+  </div>
+</div>
+
+<!-- Anleitungs-Overlay -->
+<div class="overlay" id="ovHelp">
+  <div class="panel">
+    <h2>So funktioniert's</h2>
+    <ul class="help">
+      <li>🖱️ Maus / Finger bewegt deinen Kern</li>
+      <li><kbd>Leertaste</kbd> / Klick / Tippen wechselt die Farbe
+        (<span class="c">Cyan</span> ⇄ <span class="m">Magenta</span>)</li>
+      <li>Partikel in <b>deiner Farbe</b> werden angezogen → Punkte</li>
+      <li>Partikel in <b>fremder Farbe</b> werden abgestoßen → Treffer kostet ein Leben</li>
+      <li>Treffer in Serie erhöhen den Combo-Multiplikator</li>
+      <li>Ein Farbwechsel kostet etwas Energie (Leiste unter dem Kern)</li>
+      <li><kbd>P</kbd> / <kbd>Esc</kbd> pausiert das Spiel</li>
+    </ul>
+    <button class="btn" id="btnHelpBack">Verstanden</button>
+  </div>
+</div>
+
+<!-- Pause-Overlay -->
+<div class="overlay" id="ovPause">
+  <div class="panel">
+    <h2>Pausiert</h2>
+    <p>Atme kurz durch.</p>
+    <button class="btn" id="btnResume">Weiter</button>
+    <button class="btn ghost" id="btnRestart">Neu starten</button>
+    <button class="btn ghost" id="btnMenu">Hauptmenü</button>
+  </div>
+</div>
+
+<!-- Game-Over-Overlay -->
+<div class="overlay" id="ovOver">
+  <div class="panel">
+    <h2>Kern kollabiert</h2>
+    <p id="overMsg"></p>
+    <div class="stats">
+      <div>Punkte<b id="finalScore">0</b></div>
+      <div>Max. Combo<b id="finalCombo">0</b></div>
+      <div>Highscore<b id="finalHs">0</b></div>
+    </div>
+    <button class="btn" id="btnAgain">Nochmal</button>
+    <button class="btn ghost" id="btnMenu2">Hauptmenü</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  const cv = document.getElementById('game');
+  const ctx = cv.getContext('2d');
+  const COLORS = ['#22e3ff', '#ff3fa4'];
+  const $ = id => document.getElementById(id);
+
+  let W, H, DPR;
+  function resize() {
+    DPR = Math.min(window.devicePixelRatio || 1, 2);
+    W = innerWidth; H = innerHeight;
+    cv.width = W * DPR; cv.height = H * DPR;
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  }
+  addEventListener('resize', resize); resize();
+
+  // ---------- Zustand ----------
+  let state = 'menu'; // menu | play | pause | over
+  let player, particles, sparks, stars, score, combo, maxCombo, lives, level,
+      spawnTimer, levelTimer, shake, energy;
+  const mouse = { x: W / 2, y: H / 2 };
+  let highscore = +(localStorage.getItem('polaris_hs') || 0);
+  $('hsStart').textContent = highscore;
+
+  stars = Array.from({ length: 120 }, () => ({
+    x: Math.random() * W, y: Math.random() * H,
+    z: Math.random() * 0.8 + 0.2
+  }));
+
+  function reset() {
+    player = { x: W / 2, y: H / 2, r: 16, pol: 0, pulse: 0 };
+    particles = []; sparks = [];
+    score = 0; combo = 1; maxCombo = 1; lives = 3; level = 1;
+    spawnTimer = 0; levelTimer = 0; shake = 0; energy = 1;
+    updateHUD();
+  }
+
+  // ---------- Overlays ----------
+  const overlays = ['ovStart', 'ovHelp', 'ovPause', 'ovOver'];
+  function showOverlay(id) {
+    overlays.forEach(o => $(o).classList.toggle('show', o === id));
+  }
+  function startGame() { reset(); state = 'play'; showOverlay(null); toast('LOS!', COLORS[0]); }
+  function pause() { if (state === 'play') { state = 'pause'; showOverlay('ovPause'); } }
+  function resume() { if (state === 'pause') { state = 'play'; showOverlay(null); last = performance.now(); } }
+  function toMenu() { state = 'menu'; $('hsStart').textContent = highscore; showOverlay('ovStart'); }
+  function gameOver() {
+    state = 'over';
+    if (score > highscore) { highscore = score; localStorage.setItem('polaris_hs', highscore); }
+    $('finalScore').textContent = score;
+    $('finalCombo').textContent = 'x' + maxCombo;
+    $('finalHs').textContent = highscore;
+    $('overMsg').textContent = score >= highscore && score > 0
+      ? '🏆 Neuer Highscore!' : `Du hast Level ${level} erreicht.`;
+    setTimeout(() => showOverlay('ovOver'), 500);
+  }
+
+  $('btnStart').onclick = startGame;
+  $('btnHelp').onclick = () => showOverlay('ovHelp');
+  $('btnHelpBack').onclick = () => showOverlay('ovStart');
+  $('btnResume').onclick = resume;
+  $('btnRestart').onclick = startGame;
+  $('btnMenu').onclick = toMenu;
+  $('btnMenu2').onclick = toMenu;
+  $('btnAgain').onclick = startGame;
+  $('pauseBtn').onclick = e => { e.stopPropagation(); state === 'play' ? pause() : resume(); };
+
+  let toastT;
+  function toast(txt, col) {
+    const t = $('toast');
+    t.textContent = txt; t.style.color = col;
+    t.classList.add('show');
+    clearTimeout(toastT);
+    toastT = setTimeout(() => t.classList.remove('show'), 900);
+  }
+
+  // ---------- Eingabe ----------
+  addEventListener('mousemove', e => { mouse.x = e.clientX; mouse.y = e.clientY; });
+  cv.addEventListener('mousedown', () => flip());
+  cv.addEventListener('touchstart', e => {
+    const t = e.touches[0]; mouse.x = t.clientX; mouse.y = t.clientY; flip(); e.preventDefault();
+  }, { passive: false });
+  cv.addEventListener('touchmove', e => {
+    const t = e.touches[0]; mouse.x = t.clientX; mouse.y = t.clientY; e.preventDefault();
+  }, { passive: false });
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') { e.preventDefault(); if (state === 'play') flip(); else if (state === 'menu') startGame(); }
+    if (e.code === 'KeyP' || e.code === 'Escape') state === 'play' ? pause() : resume();
+  });
+  addEventListener('blur', pause);
+
+  function flip() {
+    if (state !== 'play' || energy < 0.25) return;
+    energy -= 0.25;
+    player.pol ^= 1; player.pulse = 1;
+    burst(player.x, player.y, COLORS[player.pol], 14, 3);
+  }
+
+  // ---------- Spiel-Logik ----------
+  function spawn() {
+    const side = Math.floor(Math.random() * 4);
+    let x, y;
+    if (side === 0) { x = Math.random() * W; y = -20; }
+    else if (side === 1) { x = W + 20; y = Math.random() * H; }
+    else if (side === 2) { x = Math.random() * W; y = H + 20; }
+    else { x = -20; y = Math.random() * H; }
+    const tx = W / 2 + (Math.random() - .5) * W * .6;
+    const ty = H / 2 + (Math.random() - .5) * H * .6;
+    const a = Math.atan2(ty - y, tx - x);
+    const sp = 1.2 + Math.random() * 0.8 + level * 0.18;
+    particles.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+      r: 6 + Math.random() * 4, pol: Math.random() < .5 ? 0 : 1, life: 0 });
+  }
+
+  function burst(x, y, col, n, spd) {
+    for (let i = 0; i < n; i++) {
+      const a = Math.random() * Math.PI * 2, s = Math.random() * spd + 1;
+      sparks.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 1, col });
+    }
+  }
+
+  function updateHUD() {
+    $('score').textContent = score;
+    $('level').textContent = level;
+    const c = $('combo');
+    c.textContent = 'x' + combo;
+    c.style.color = combo > 1 ? COLORS[player ? player.pol : 0] : '#e8eaf6';
+    $('lives').innerHTML = [0, 1, 2].map(i => `<span class="${i < lives ? '' : 'lost'}"></span>`).join('');
+  }
+
+  function update(dt) {
+    // Spieler folgt der Maus weich
+    player.x += (mouse.x - player.x) * 0.18 * dt;
+    player.y += (mouse.y - player.y) * 0.18 * dt;
+    player.pulse = Math.max(0, player.pulse - 0.05 * dt);
+    energy = Math.min(1, energy + 0.004 * dt);
+
+    // Spawning und Levelaufstieg
+    spawnTimer -= dt;
+    if (spawnTimer <= 0) { spawn(); spawnTimer = Math.max(14, 50 - level * 4); }
+    levelTimer += dt;
+    if (levelTimer > 60 * 20) { levelTimer = 0; level++; toast('LEVEL ' + level, COLORS[player.pol]); updateHUD(); }
+
+    // Partikel: Magnetfeld
+    for (let i = particles.length - 1; i >= 0; i--) {
+      const p = particles[i];
+      const dx = player.x - p.x, dy = player.y - p.y;
+      const d = Math.hypot(dx, dy) || 1;
+      const field = 220;
+      if (d < field) {
+        const f = (1 - d / field) * 0.35 * dt;
+        const dir = p.pol === player.pol ? 1 : -0.8; // anziehen oder abstoßen
+        p.vx += dx / d * f * dir;
+        p.vy += dy / d * f * dir;
+      }
+      // Geschwindigkeitslimit
+      const sp = Math.hypot(p.vx, p.vy), max = 5 + level * 0.3;
+      if (sp > max) { p.vx *= max / sp; p.vy *= max / sp; }
+      p.x += p.vx * dt; p.y += p.vy * dt; p.life += dt;
+
+      // Kollision mit dem Spieler
+      if (d < player.r + p.r) {
+        if (p.pol === player.pol) {
+          score += 10 * combo;
+          combo = Math.min(combo + 1, 20);
+          maxCombo = Math.max(maxCombo, combo);
+          burst(p.x, p.y, COLORS[p.pol], 10, 3);
+        } else {
+          lives--; combo = 1; shake = 14;
+          burst(p.x, p.y, '#ffffff', 30, 6);
+          if (lives <= 0) { updateHUD(); burst(player.x, player.y, COLORS[player.pol], 80, 8); gameOver(); }
+        }
+        particles.splice(i, 1); updateHUD();
+        continue;
+      }
+      // Entkommen: Combo bricht ab, wenn ein eigener Partikel verpasst wird
+      if (p.life > 60 && (p.x < -60 || p.x > W + 60 || p.y < -60 || p.y > H + 60)) {
+        if (p.pol === player.pol && combo > 1) { combo = 1; updateHUD(); }
+        particles.splice(i, 1);
+      }
+    }
+  }
+
+  function updateFx(dt) {
+    for (let i = sparks.length - 1; i >= 0; i--) {
+      const s = sparks[i];
+      s.x += s.vx * dt; s.y += s.vy * dt;
+      s.vx *= 0.95; s.vy *= 0.95; s.life -= 0.03 * dt;
+      if (s.life <= 0) sparks.splice(i, 1);
+    }
+    shake = Math.max(0, shake - 0.8 * dt);
+    stars.forEach(s => { s.y += s.z * 0.3 * dt; if (s.y > H) { s.y = 0; s.x = Math.random() * W; } });
+  }
+
+  // ---------- Zeichnen ----------
+  function draw() {
+    ctx.fillStyle = 'rgba(10,11,20,0.35)';
+    ctx.fillRect(0, 0, W, H);
+
+    ctx.save();
+    if (shake > 0) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
+
+    stars.forEach(s => {
+      ctx.fillStyle = `rgba(255,255,255,${s.z * 0.5})`;
+      ctx.fillRect(s.x, s.y, s.z * 2, s.z * 2);
+    });
+
+    if (state === 'menu') { ctx.restore(); return; }
+
+    const col = COLORS[player.pol];
+
+    // Magnetfeld des Spielers
+    const g = ctx.createRadialGradient(player.x, player.y, 0, player.x, player.y, 220);
+    g.addColorStop(0, col + '22'); g.addColorStop(1, 'transparent');
+    ctx.fillStyle = g;
+    ctx.beginPath(); ctx.arc(player.x, player.y, 220, 0, Math.PI * 2); ctx.fill();
+
+    // Partikel
+    ctx.globalCompositeOperation = 'lighter';
+    particles.forEach(p => {
+      const c = COLORS[p.pol];
+      ctx.shadowBlur = 16; ctx.shadowColor = c;
+      ctx.fillStyle = c;
+      ctx.beginPath();
+      if (p.pol === player.pol) ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      else { // fremde Partikel als Dreiecke für bessere Unterscheidbarkeit
+        const a = p.life * 0.08;
+        for (let k = 0; k < 3; k++) {
+          const ang = a + k * Math.PI * 2 / 3;
+          ctx[k ? 'lineTo' : 'moveTo'](p.x + Math.cos(ang) * p.r * 1.3, p.y + Math.sin(ang) * p.r * 1.3);
+        }
+        ctx.closePath();
+      }
+      ctx.fill();
+    });
+
+    // Funken
+    sparks.forEach(s => {
+      ctx.globalAlpha = s.life;
+      ctx.fillStyle = s.col;
+      ctx.fillRect(s.x - 1.5, s.y - 1.5, 3, 3);
+    });
+    ctx.globalAlpha = 1;
+    ctx.globalCompositeOperation = 'source-over';
+
+    // Spieler
+    if (lives > 0) {
+      const r = player.r + player.pulse * 10;
+      ctx.shadowBlur = 30; ctx.shadowColor = col;
+      ctx.strokeStyle = col; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.arc(player.x, player.y, r, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = '#fff';
+      ctx.beginPath(); ctx.arc(player.x, player.y, player.r * 0.45, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+
+      // Energieleiste
+      ctx.fillStyle = 'rgba(255,255,255,.15)';
+      ctx.fillRect(player.x - 20, player.y + 28, 40, 4);
+      ctx.fillStyle = energy >= 0.25 ? col : '#666';
+      ctx.fillRect(player.x - 20, player.y + 28, 40 * energy, 4);
+    }
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  // ---------- Loop ----------
+  let last = performance.now();
+  function loop(now) {
+    const dt = Math.min((now - last) / 16.67, 3);
+    last = now;
+    if (state === 'play') update(dt);
+    if (state !== 'pause') updateFx(dt);
+    draw();
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
