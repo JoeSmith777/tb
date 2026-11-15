@@ -4,163 +4,157 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Moodle Quiz Builder</title>
-  <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="styles.css">
   <script src="app.js" defer></script>
 </head>
 <body>
   <header class="topbar">
     <div>
       <h1>Moodle Quiz Builder</h1>
-      <p>Single Choice, Multiple Choice und Moodle-Export</p>
+      <p>Fragen erstellen, prüfen und für Moodle exportieren</p>
     </div>
 
     <nav class="toolbar" aria-label="Projektaktionen">
       <button id="newProjectBtn" class="secondary">Neues Projekt</button>
 
       <label class="button secondary">
-        Projekt importieren
-        <input id="projectImport" type="file" accept=".json,application/json" hidden>
+        Importieren
+        <input id="projectImport" type="file"
+               accept=".json,application/json" hidden>
       </label>
 
-      <button id="saveProjectBtn" class="secondary">Projekt speichern</button>
-      <button id="validateBtn">Prüfen</button>
+      <button id="saveProjectBtn" class="secondary">Projektdatei</button>
       <button id="previewBtn">Vorschau</button>
+      <button id="validateBtn">Prüfen</button>
       <button id="exportMoodleBtn">Moodle XML</button>
       <button id="exportGiftBtn">GIFT</button>
     </nav>
   </header>
 
   <main class="app">
+    <!-- Linke Spalte: nur Navigation -->
     <aside class="panel sidebar">
-      <section>
-        <h2>Projekt</h2>
-
+      <section class="project-navigation">
         <label>
-          Titel
+          Projektname
           <input id="projectTitle" type="text" value="Mein Quiz">
         </label>
 
-        <label>
-          Beschreibung
-          <textarea id="projectDescription" rows="3"></textarea>
-        </label>
-
-        <label>
-          Standardpunkte
-          <input id="defaultPoints" type="number" min="0.1" step="0.1" value="1">
-        </label>
+        <div class="primary-actions">
+          <button id="addQuestionBtn">＋ Neue Frage</button>
+          <button id="openGeneratorBtn" class="secondary">
+            Fragen erzeugen
+          </button>
+        </div>
       </section>
 
       <section>
         <div class="section-heading">
           <h2>Fragen</h2>
-          <button id="addQuestionBtn" title="Frage hinzufügen">＋</button>
+          <span id="questionCount" class="badge">0</span>
         </div>
 
-        <input id="questionSearch" type="search" placeholder="Fragen durchsuchen">
+        <input id="questionSearch" type="search"
+               placeholder="Fragen durchsuchen">
 
         <div id="questionList" class="question-list"></div>
       </section>
-
-      <section>
-        <h2>Schnellgenerator</h2>
-
-        <label>
-          Begriff
-          <input id="generatorTerm" type="text" placeholder="z. B. Photosynthese">
-        </label>
-
-        <label>
-          Richtige Antwort
-          <input id="generatorAnswer" type="text" placeholder="Definition oder Lösung">
-        </label>
-
-        <label>
-          Distraktoren
-          <textarea
-            id="generatorDistractors"
-            rows="4"
-            placeholder="Eine falsche Antwort pro Zeile"
-          ></textarea>
-        </label>
-
-        <button id="generateQuestionBtn">Frage erzeugen</button>
-      </section>
-
-      <section>
-        <h2>Tabellenimport</h2>
-        <p class="hint">
-          Eine Frage pro Zeile: Frage;richtige Antwort;Distraktor 1;Distraktor 2
-        </p>
-
-        <textarea
-          id="bulkInput"
-          rows="6"
-          placeholder="Hauptstadt von Frankreich?;Paris;Berlin;Rom"
-        ></textarea>
-
-        <button id="bulkGenerateBtn">Fragen importieren</button>
-      </section>
     </aside>
 
+    <!-- Mittlere Spalte: Inhalt bearbeiten -->
     <section class="panel editor">
       <div id="emptyState" class="empty-state">
-        <h2>Noch keine Frage ausgewählt</h2>
-        <p>Erstelle links eine neue Frage.</p>
+        <h2>Keine Frage ausgewählt</h2>
+        <p>Wähle links eine Frage aus oder erstelle eine neue.</p>
       </div>
 
       <form id="questionForm" hidden>
         <div class="editor-header">
-          <h2>Frage bearbeiten</h2>
+          <div>
+            <p class="eyebrow">FRAGENEDITOR</p>
+            <h2 id="editorTitle">Frage bearbeiten</h2>
+            <div id="saveStatus" class="save-status" aria-live="polite">
+              Gespeichert
+            </div>
+          </div>
 
           <div class="inline-actions">
-            <button id="duplicateQuestionBtn" type="button" class="secondary">
-              Duplizieren
-            </button>
-            <button id="deleteQuestionBtn" type="button" class="danger">
-              Löschen
-            </button>
+            <button id="previousQuestionBtn" type="button"
+                    class="secondary">← Vorherige</button>
+            <button id="nextQuestionBtn" type="button"
+                    class="secondary">Nächste →</button>
           </div>
         </div>
 
-        <div class="grid two">
-          <label>
-            Fragetyp
-            <select id="questionType">
-              <option value="single">Single Choice</option>
-              <option value="multiple">Multiple Choice</option>
-            </select>
-          </label>
-
-          <label>
-            Punkte
-            <input id="questionPoints" type="number" min="0.1" step="0.1">
-          </label>
-        </div>
-
-        <label>
+        <label class="question-text-label">
           Fragetext
-          <textarea id="questionText" rows="5"></textarea>
+          <textarea id="questionText" rows="5"
+                    placeholder="Frage eingeben"></textarea>
         </label>
 
-        <div class="grid two">
-          <label>
-            Schwierigkeitsgrad
-            <select id="questionDifficulty">
-              <option value="">Nicht festgelegt</option>
-              <option value="leicht">Leicht</option>
-              <option value="mittel">Mittel</option>
-              <option value="schwer">Schwer</option>
-            </select>
-          </label>
-
-          <label>
-            Tags, kommagetrennt
-            <input id="questionTags" type="text">
-          </label>
+        <div class="section-heading answer-heading">
+          <div>
+            <h3>Antwortmöglichkeiten</h3>
+            <p class="hint">
+              Richtige Antworten markieren; die übrigen sind Distraktoren.
+            </p>
+          </div>
+          <button id="addAnswerBtn" type="button">
+            ＋ Antwort
+          </button>
         </div>
 
-        <div class="settings-row">
+        <div id="answerList" class="answer-list"></div>
+
+        <label>
+          Allgemeines Feedback
+          <textarea id="generalFeedback" rows="3"
+                    placeholder="Optionales Feedback nach der Beantwortung"></textarea>
+        </label>
+
+        <div class="editor-footer">
+          <button id="saveAndNextBtn" type="button">
+            Speichern und nächste Frage
+          </button>
+          <button id="duplicateQuestionBtn" type="button"
+                  class="secondary">Frage duplizieren</button>
+          <button id="deleteQuestionBtn" type="button"
+                  class="danger">Frage löschen</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- Rechte Spalte: Einstellungen -->
+    <aside class="panel inspector">
+      <div id="settingsEmpty" class="settings-empty">
+        <h2>Einstellungen</h2>
+        <p>Wähle eine Frage aus.</p>
+      </div>
+
+      <div id="settingsContent" hidden>
+        <p class="eyebrow">AUSGEWÄHLTE FRAGE</p>
+        <h2>Einstellungen</h2>
+
+        <label>
+          Fragetyp
+          <select id="questionType">
+            <option value="single">Single Choice</option>
+            <option value="multiple">Multiple Choice</option>
+          </select>
+        </label>
+
+        <label>
+          Punkte
+          <input id="questionPoints" type="number"
+                 min="0.1" step="0.1">
+        </label>
+
+        <button id="autoScoreBtn" type="button"
+                class="secondary full-width">
+          Gewichtungen automatisch verteilen
+        </button>
+
+        <div class="setting-box">
           <label class="check-label">
             <input id="shuffleAnswers" type="checkbox">
             Antworten mischen
@@ -168,55 +162,109 @@
 
           <label class="check-label">
             <input id="allowNegative" type="checkbox">
-            Negative Bewertung erlauben
+            Negative Gewichtungen
           </label>
-
-          <button id="autoScoreBtn" type="button" class="secondary">
-            Punkte automatisch verteilen
-          </button>
         </div>
-
-        <div class="section-heading">
-          <h3>Antworten</h3>
-          <button id="addAnswerBtn" type="button">Antwort hinzufügen</button>
-        </div>
-
-        <div id="answerList" class="answer-list"></div>
 
         <label>
-          Allgemeines Feedback
-          <textarea id="generalFeedback" rows="3"></textarea>
+          Schwierigkeitsgrad
+          <select id="questionDifficulty">
+            <option value="">Nicht festgelegt</option>
+            <option value="leicht">Leicht</option>
+            <option value="mittel">Mittel</option>
+            <option value="schwer">Schwer</option>
+          </select>
         </label>
-      </form>
-    </section>
 
-    <aside class="panel inspector">
-      <h2>Qualitätsprüfung</h2>
-      <div id="validationSummary" class="validation-summary">
-        Noch nicht geprüft.
+        <label>
+          Tags, kommagetrennt
+          <input id="questionTags" type="text"
+                 placeholder="Thema, Kapitel 1">
+        </label>
+
+        <h3>Bewertung</h3>
+        <div id="scoreSummary" class="score-card"></div>
+
+        <div class="section-heading validation-heading">
+          <h3>Qualitätsprüfung</h3>
+          <button id="validateQuestionBtn" type="button"
+                  class="secondary compact">Prüfen</button>
+        </div>
+
+        <div id="validationSummary" class="validation-summary">
+          Noch nicht geprüft.
+        </div>
+        <ul id="validationList" class="validation-list"></ul>
       </div>
-      <ul id="validationList" class="validation-list"></ul>
-
-      <h2>Bewertung</h2>
-      <div id="scoreSummary" class="score-card">
-        Wähle eine Frage aus.
-      </div>
-
-      <h2>Hinweise</h2>
-      <ul class="hint-list">
-        <li>Single Choice benötigt genau eine richtige Antwort.</li>
-        <li>Positive Gewichtungen sollten zusammen 100 % ergeben.</li>
-        <li>Projektänderungen werden lokal gespeichert.</li>
-      </ul>
     </aside>
   </main>
 
+  <!-- Generator -->
+  <dialog id="generatorDialog">
+    <form method="dialog" class="dialog-shell">
+      <div class="dialog-header">
+        <div>
+          <p class="eyebrow">AUTOMATISIERUNG</p>
+          <h2>Fragen erzeugen</h2>
+        </div>
+        <button value="cancel" class="secondary">Schließen</button>
+      </div>
+
+      <div class="generator-tabs" role="tablist">
+        <button id="singleGeneratorTab" type="button"
+                class="tab active">Einzelfrage</button>
+        <button id="bulkGeneratorTab" type="button"
+                class="tab">Tabellenimport</button>
+      </div>
+
+      <section id="singleGeneratorPanel">
+        <label>
+          Begriff oder Thema
+          <input id="generatorTerm" type="text"
+                 placeholder="z. B. Photosynthese">
+        </label>
+
+        <label>
+          Richtige Antwort
+          <textarea id="generatorAnswer" rows="3"
+                    placeholder="Richtige Definition oder Lösung"></textarea>
+        </label>
+
+        <label>
+          Distraktoren
+          <textarea id="generatorDistractors" rows="6"
+                    placeholder="Eine falsche Antwort pro Zeile"></textarea>
+        </label>
+
+        <button id="generateQuestionBtn" type="button">
+          Frage erstellen
+        </button>
+      </section>
+
+      <section id="bulkGeneratorPanel" hidden>
+        <p class="hint">
+          Format: Frage;richtige Antwort;Distraktor 1;Distraktor 2
+        </p>
+
+        <textarea id="bulkInput" rows="10"
+          placeholder="Hauptstadt von Frankreich?;Paris;Berlin;Rom&#10;2 + 2 = ?;4;3;5"></textarea>
+
+        <button id="bulkGenerateBtn" type="button">
+          Fragen importieren
+        </button>
+      </section>
+    </form>
+  </dialog>
+
+  <!-- Vorschau -->
   <dialog id="previewDialog">
-    <div class="dialog-header">
-      <h2>Quizvorschau</h2>
-      <button id="closePreviewBtn" class="secondary">Schließen</button>
+    <div class="dialog-shell">
+      <div class="dialog-header">
+        <h2>Quizvorschau</h2>
+        <button id="closePreviewBtn" class="secondary">Schließen</button>
+      </div>
+      <div id="previewContent"></div>
     </div>
-    <div id="previewContent"></div>
   </dialog>
 
   <div id="toast" role="status" aria-live="polite"></div>
