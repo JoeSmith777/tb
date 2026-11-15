@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Moodle Quiz Builder</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <h1>Moodle Quiz Builder</h1>
+      <p>Single Choice, Multiple Choice und Moodle-Export</p>
+    </div>
+
+    <nav class="toolbar" aria-label="Projektaktionen">
+      <button id="newProjectBtn" class="secondary">Neues Projekt</button>
+
+      <label class="button secondary">
+        Projekt importieren
+        <input id="projectImport" type="file" accept=".json,application/json" hidden>
+      </label>
+
+      <button id="saveProjectBtn" class="secondary">Projekt speichern</button>
+      <button id="validateBtn">Prüfen</button>
+      <button id="previewBtn">Vorschau</button>
+      <button id="exportMoodleBtn">Moodle XML</button>
+      <button id="exportGiftBtn">GIFT</button>
+    </nav>
+  </header>
+
+  <main class="app">
+    <aside class="panel sidebar">
+      <section>
+        <h2>Projekt</h2>
+
+        <label>
+          Titel
+          <input id="projectTitle" type="text" value="Mein Quiz">
+        </label>
+
+        <label>
+          Beschreibung
+          <textarea id="projectDescription" rows="3"></textarea>
+        </label>
+
+        <label>
+          Standardpunkte
+          <input id="defaultPoints" type="number" min="0.1" step="0.1" value="1">
+        </label>
+      </section>
+
+      <section>
+        <div class="section-heading">
+          <h2>Fragen</h2>
+          <button id="addQuestionBtn" title="Frage hinzufügen">＋</button>
+        </div>
+
+        <input id="questionSearch" type="search" placeholder="Fragen durchsuchen">
+
+        <div id="questionList" class="question-list"></div>
+      </section>
+
+      <section>
+        <h2>Schnellgenerator</h2>
+
+        <label>
+          Begriff
+          <input id="generatorTerm" type="text" placeholder="z. B. Photosynthese">
+        </label>
+
+        <label>
+          Richtige Antwort
+          <input id="generatorAnswer" type="text" placeholder="Definition oder Lösung">
+        </label>
+
+        <label>
+          Distraktoren
+          <textarea
+            id="generatorDistractors"
+            rows="4"
+            placeholder="Eine falsche Antwort pro Zeile"
+          ></textarea>
+        </label>
+
+        <button id="generateQuestionBtn">Frage erzeugen</button>
+      </section>
+
+      <section>
+        <h2>Tabellenimport</h2>
+        <p class="hint">
+          Eine Frage pro Zeile: Frage;richtige Antwort;Distraktor 1;Distraktor 2
+        </p>
+
+        <textarea
+          id="bulkInput"
+          rows="6"
+          placeholder="Hauptstadt von Frankreich?;Paris;Berlin;Rom"
+        ></textarea>
+
+        <button id="bulkGenerateBtn">Fragen importieren</button>
+      </section>
+    </aside>
+
+    <section class="panel editor">
+      <div id="emptyState" class="empty-state">
+        <h2>Noch keine Frage ausgewählt</h2>
+        <p>Erstelle links eine neue Frage.</p>
+      </div>
+
+      <form id="questionForm" hidden>
+        <div class="editor-header">
+          <h2>Frage bearbeiten</h2>
+
+          <div class="inline-actions">
+            <button id="duplicateQuestionBtn" type="button" class="secondary">
+              Duplizieren
+            </button>
+            <button id="deleteQuestionBtn" type="button" class="danger">
+              Löschen
+            </button>
+          </div>
+        </div>
+
+        <div class="grid two">
+          <label>
+            Fragetyp
+            <select id="questionType">
+              <option value="single">Single Choice</option>
+              <option value="multiple">Multiple Choice</option>
+            </select>
+          </label>
+
+          <label>
+            Punkte
+            <input id="questionPoints" type="number" min="0.1" step="0.1">
+          </label>
+        </div>
+
+        <label>
+          Fragetext
+          <textarea id="questionText" rows="5"></textarea>
+        </label>
+
+        <div class="grid two">
+          <label>
+            Schwierigkeitsgrad
+            <select id="questionDifficulty">
+              <option value="">Nicht festgelegt</option>
+              <option value="leicht">Leicht</option>
+              <option value="mittel">Mittel</option>
+              <option value="schwer">Schwer</option>
+            </select>
+          </label>
+
+          <label>
+            Tags, kommagetrennt
+            <input id="questionTags" type="text">
+          </label>
+        </div>
+
+        <div class="settings-row">
+          <label class="check-label">
+            <input id="shuffleAnswers" type="checkbox">
+            Antworten mischen
+          </label>
+
+          <label class="check-label">
+            <input id="allowNegative" type="checkbox">
+            Negative Bewertung erlauben
+          </label>
+
+          <button id="autoScoreBtn" type="button" class="secondary">
+            Punkte automatisch verteilen
+          </button>
+        </div>
+
+        <div class="section-heading">
+          <h3>Antworten</h3>
+          <button id="addAnswerBtn" type="button">Antwort hinzufügen</button>
+        </div>
+
+        <div id="answerList" class="answer-list"></div>
+
+        <label>
+          Allgemeines Feedback
+          <textarea id="generalFeedback" rows="3"></textarea>
+        </label>
+      </form>
+    </section>
+
+    <aside class="panel inspector">
+      <h2>Qualitätsprüfung</h2>
+      <div id="validationSummary" class="validation-summary">
+        Noch nicht geprüft.
+      </div>
+      <ul id="validationList" class="validation-list"></ul>
+
+      <h2>Bewertung</h2>
+      <div id="scoreSummary" class="score-card">
+        Wähle eine Frage aus.
+      </div>
+
+      <h2>Hinweise</h2>
+      <ul class="hint-list">
+        <li>Single Choice benötigt genau eine richtige Antwort.</li>
+        <li>Positive Gewichtungen sollten zusammen 100 % ergeben.</li>
+        <li>Projektänderungen werden lokal gespeichert.</li>
+      </ul>
+    </aside>
+  </main>
+
+  <dialog id="previewDialog">
+    <div class="dialog-header">
+      <h2>Quizvorschau</h2>
+      <button id="closePreviewBtn" class="secondary">Schließen</button>
+    </div>
+    <div id="previewContent"></div>
+  </dialog>
+
+  <div id="toast" role="status" aria-live="polite"></div>
+</body>
+</html>
